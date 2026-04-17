@@ -1,6 +1,10 @@
 import { getSupabaseAdmin } from "./supabase-admin";
 
 export type StoredScenario = {
+  id?: string;
+  created_at?: string;
+  times_used?: number;
+
   brand: string;
   platform_type: string;
   category: string;
@@ -68,13 +72,58 @@ export async function findScenarioBySignature(signature: string) {
   return data;
 }
 
-export async function getRandomScenarios(limit = 10) {
+export async function getScenarioById(id: string) {
   const supabase = getSupabaseAdmin();
 
   const { data, error } = await supabase
     .from("scenarios")
     .select("*")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data;
+}
+
+export async function getLatestScenario() {
+  const supabase = getSupabaseAdmin();
+
+  const { data, error } = await supabase
+    .from("scenarios")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data;
+}
+
+export async function getScenariosForMode(
+  mode: "all" | "eu" | "us" | "asia",
+  limit = 10
+) {
+  const supabase = getSupabaseAdmin();
+
+  let query = supabase.from("scenarios").select("*");
+
+  if (mode === "eu") {
+    query = query.eq("platform_type", "eu");
+  } else if (mode === "us") {
+    query = query.eq("platform_type", "us");
+  } else if (mode === "asia") {
+    query = query.eq("platform_type", "asia");
+  }
+
+  const { data, error } = await query
     .order("times_used", { ascending: true })
+    .order("created_at", { ascending: false })
     .limit(limit);
 
   if (error) {
@@ -82,4 +131,26 @@ export async function getRandomScenarios(limit = 10) {
   }
 
   return data ?? [];
+}
+
+export async function incrementScenarioTimesUsed(id: string) {
+  const supabase = getSupabaseAdmin();
+
+  const current = await getScenarioById(id);
+  if (!current) {
+    throw new Error("Scenario not found");
+  }
+
+  const nextTimesUsed = Number(current.times_used || 0) + 1;
+
+  const { error } = await supabase
+    .from("scenarios")
+    .update({ times_used: nextTimesUsed })
+    .eq("id", id);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return { id, times_used: nextTimesUsed };
 }
