@@ -106,22 +106,14 @@ export async function getLatestScenario() {
 }
 
 export async function getScenariosForMode(
-  mode: "all" | "eu" | "us" | "asia",
+  mode: "all" = "all",
   limit = 10
 ) {
   const supabase = getSupabaseAdmin();
 
-  let query = supabase.from("scenarios").select("*");
-
-  if (mode === "eu") {
-    query = query.eq("platform_type", "eu");
-  } else if (mode === "us") {
-    query = query.eq("platform_type", "us");
-  } else if (mode === "asia") {
-    query = query.eq("platform_type", "asia");
-  }
-
-  const { data, error } = await query
+  const { data, error } = await supabase
+    .from("scenarios")
+    .select("*")
     .order("times_used", { ascending: true })
     .order("created_at", { ascending: false })
     .limit(limit);
