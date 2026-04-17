@@ -1,11 +1,13 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { supabaseAdmin } from "@/lib/supabase-admin";
+import { getSupabaseAdmin } from "../../lib/supabase-admin";
 
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
   try {
+    const supabaseAdmin = getSupabaseAdmin();
+
     const { data, error } = await supabaseAdmin
       .from("scenarios")
       .select("id, title, brand, difficulty")
