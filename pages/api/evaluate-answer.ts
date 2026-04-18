@@ -1,145 +1,148 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { callOpenAI } from "@/lib/openai";
+import { getOpenAI } from "../../lib/openai";
 
-type Verdict = "correct" | "very_close" | "partial" | "weak" | "wrong";
+type ScenarioQuestion = {
+  id: string;
+  brand: string;
+  platform_type: string;
+  category: string;
+  root_cause_id: string;
+  root_cause_label: string;
+  difficulty: "easy" | "medium" | "hard";
+  title: string;
+  vehicle: string;
+  symptoms: string[];
+  driving: string[];
+  extra: string[];
+  key_details: string[];
+  questions: string[];
+  hint: string[];
+  answer_main: string;
+  answer_why_no_code: string;
+  answer_proof: string[];
+  accepted_answers: string[];
+  partial_answers: string[];
+};
 
-type AiResult = {
+type EvalApiResponse = {
   score: number;
   diagnosis_percent: number;
   bonus: number;
-  verdict: Verdict;
+  verdict: "correct" | "very_close" | "partial" | "weak" | "wrong";
   matched_cause: string;
   reason_short: string;
 };
 
-function normalizeLocale(value: unknown): "bs" | "en" {
-  const v = String(value || "").toLowerCase();
-  return v === "bs" ? "bs" : "en";
-}
-
-function clamp(n: number, min: number, max: number) {
+function clampNumber(value: any, min: number, max: number) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return min;
   return Math.max(min, Math.min(max, n));
 }
 
-function buildSystemPrompt(locale: "bs" | "en") {
-  if (locale === "bs") {
-    return `
-Ti si vrhunski dijagnostičar (master tech). Ocjenjuješ odgovor korisnika na osnovu tačnosti dijagnoze.
+function sanitizeResult(raw: any): EvalApiResponse {
+  const diagnosisPercent = clampNumber(raw?.diagnosis_percent, 0, 100);
+  const bonus = clampNumber(raw?.bonus, 0, 1);
+  const score = clampNumber(raw?.score, 0, 10);
 
-PRAVILA:
-- Odgovaraj ISKLJUČIVO na BOSANSKOM jeziku.
-- Ne koristi engleske riječi u feedbacku.
-- Ocjena ide od 0 do 10.
+  const allowedVerdicts = ["correct", "very_close", "partial", "weak", "wrong"];
+  const verdict = allowedVerdicts.includes(raw?.verdict) ? raw.verdict : "wrong";
 
-KRITERIJI:
-- 9-10: Tačan uzrok + dodatno objašnjenje ili način testiranja
-- 7-8: Vrlo blizu (pravi sistem ili komponenta)
-- 4-6: Djelimično tačno
-- 1-3: Slabo
-- 0: Pogrešno
+  return {
+    score,
+    diagnosis_percent: diagnosisPercent,
+    bonus,
+    verdict,
+    matched_cause: String(raw?.matched_cause || "").trim(),
+    reason_short: String(raw?.reason_short || "").trim(),
+  };
+}
+
+function buildPrompt(question: ScenarioQuestion, userAnswer: string) {
+  return `
+You are grading a mechanic diagnostic answer.
+
+IMPORTANT GOAL:
+This app is about DIAGNOSIS SKILL, not elegant writing.
+Do NOT punish the user for short answers if the diagnosis is correct or very close.
+
+You must grade the user's answer using this exact philosophy:
+
+SCORING RULES:
+1. Main diagnosis is the most important thing.
+2. The user does NOT need to fully answer all 3 subquestions to get a high score.
+3. If the user correctly identifies the fault/component/system in mechanic-style language, give a high score.
+4. Accept synonyms, translations, shorthand mechanic wording, and rough but correct phrasing.
+5. "Why ECU may not set a fault" and "How to prove it" are only BONUS, not required for a high diagnosis score.
+
+STRICT SCORE MAPPING:
+- 100% diagnosis match => 10 points
+- 75% diagnosis match => 8 points
+- 50% to 60% diagnosis match => 4 points
+- 20% to 40% diagnosis match => 2 points
+- 0% diagnosis match => 0 points
 
 BONUS:
-+1 ako objašnjava ZAŠTO se problem dešava
-+1 ako navodi KAKO dokazati kvar
+- Add up to +1 bonus point if the user gives useful supporting explanation, proof/testing steps, or ECU reasoning.
+- Final score must still be capped at 10.
 
-VRATI JSON ISKLJUČIVO u ovom formatu:
+HOW TO INTERPRET:
+- If user says the exact root cause in different wording, that can still be 9 or 10.
+- If user names the exact problematic component but not the full failure mode, that can still be 5 to 9 depending on closeness.
+- If user gives a near-equivalent mechanic phrasing, treat it generously.
+- If user gives multiple possible causes, judge the overall answer in the user's favor if one of the main ideas is close/correct.
+
+You must return ONLY valid JSON with this exact shape:
 {
-  "score": number,
-  "diagnosis_percent": number,
-  "bonus": number,
-  "verdict": "correct" | "very_close" | "partial" | "weak" | "wrong",
-  "matched_cause": string,
-  "reason_short": string
-}
-`;
-  }
-
-  return `
-You are an expert diagnostic master technician.
-
-RULES:
-- Respond ONLY in ENGLISH.
-- Score from 0 to 10.
-
-SCORING:
-- 9-10: Correct root cause + explanation or testing method
-- 7-8: Very close (correct system/component)
-- 4-6: Partial
-- 1-3: Weak
-- 0: Wrong
-
-BONUS:
-+1 if explains WHY
-+1 if explains HOW TO PROVE
-
-RETURN JSON ONLY:
-{
-  "score": number,
-  "diagnosis_percent": number,
-  "bonus": number,
-  "verdict": "correct" | "very_close" | "partial" | "weak" | "wrong",
-  "matched_cause": string,
-  "reason_short": string
-}
-`;
+  "score": 0,
+  "diagnosis_percent": 0,
+  "bonus": 0,
+  "verdict": "wrong",
+  "matched_cause": "",
+  "reason_short": ""
 }
 
-function buildUserPrompt(locale: "bs" | "en", question: any, userAnswer: string) {
-  if (locale === "bs") {
-    return `
-VOZILO: ${question.vehicle}
-SIMPTOMI: ${question.symptoms?.join(", ")}
-PITANJE: ${question.title}
+Allowed verdict values:
+- "correct"
+- "very_close"
+- "partial"
+- "weak"
+- "wrong"
 
-TAČAN UZROK:
+SCENARIO:
+${JSON.stringify({
+  vehicle: question.vehicle,
+  title: question.title,
+  category: question.category,
+  difficulty: question.difficulty,
+  symptoms: question.symptoms,
+  driving: question.driving,
+  extra: question.extra,
+  key_details: question.key_details,
+})}
+
+EXPECTED MAIN ANSWER:
 ${question.answer_main}
 
-ODGOVOR KORISNIKA:
-${userAnswer}
+EXPECTED ROOT CAUSE LABEL:
+${question.root_cause_label}
 
-Ocijeni odgovor prema pravilima.
-`;
-  }
+ACCEPTED ANSWERS:
+${JSON.stringify(question.accepted_answers || [])}
 
-  return `
-VEHICLE: ${question.vehicle}
-SYMPTOMS: ${question.symptoms?.join(", ")}
-QUESTION: ${question.title}
+PARTIAL ANSWERS:
+${JSON.stringify(question.partial_answers || [])}
 
-CORRECT ROOT CAUSE:
-${question.answer_main}
+WHY ECU MAY NOT SET A FAULT:
+${question.answer_why_no_code}
+
+HOW TO PROVE IT:
+${JSON.stringify(question.answer_proof || [])}
 
 USER ANSWER:
 ${userAnswer}
 
-Evaluate the answer.
+Return JSON only.
 `;
-}
-
-function fallbackResult(locale: "bs" | "en", answer: string): AiResult {
-  const hasText = !!answer.trim();
-
-  return {
-    score: hasText ? 3 : 0,
-    diagnosis_percent: hasText ? 40 : 0,
-    bonus: 0,
-    verdict: hasText ? "partial" : "wrong",
-    matched_cause: "",
-    reason_short:
-      locale === "bs"
-        ? "Privremena ocjena (AI nije dostupan)."
-        : "Temporary score (AI unavailable).",
-  };
-}
-
-function isValidVerdict(value: unknown): value is Verdict {
-  return (
-    value === "correct" ||
-    value === "very_close" ||
-    value === "partial" ||
-    value === "weak" ||
-    value === "wrong"
-  );
 }
 
 export default async function handler(
@@ -151,64 +154,46 @@ export default async function handler(
   }
 
   try {
-    const { lang, question, userAnswer } = req.body;
+    const { question, userAnswer } = req.body || {};
 
-    const locale = normalizeLocale(lang);
-
-    if (!question || typeof userAnswer !== "string") {
-      return res.status(400).json({
-        ok: false,
-        error: "Missing question or answer",
-      });
+    if (!question || typeof question !== "object") {
+      return res.status(400).json({ ok: false, error: "Missing question" });
     }
 
-    const system = buildSystemPrompt(locale);
-    const user = buildUserPrompt(locale, question, userAnswer);
+    if (typeof userAnswer !== "string") {
+      return res.status(400).json({ ok: false, error: "Missing userAnswer" });
+    }
 
-    let aiText = "";
+    const openai = getOpenAI();
+    const model = process.env.OPENAI_SCORING_MODEL || "gpt-5-mini";
 
+    const response = await openai.responses.create({
+      model,
+      input: buildPrompt(question as ScenarioQuestion, userAnswer),
+    });
+
+    const text = response.output_text?.trim();
+    if (!text) {
+      throw new Error("Empty AI evaluation response");
+    }
+
+    let parsed: any;
     try {
-      aiText = await callOpenAI({
-        system,
-        user,
-        temperature: 0.2,
-      });
+      parsed = JSON.parse(text);
     } catch {
-      const fb = fallbackResult(locale, userAnswer);
-      return res.status(200).json({ ok: true, result: fb });
+      throw new Error(`AI returned non-JSON evaluation: ${text}`);
     }
 
-    let parsed: Partial<AiResult> | null = null;
-
-    try {
-      parsed = JSON.parse(aiText) as Partial<AiResult>;
-    } catch {
-      const fb = fallbackResult(locale, userAnswer);
-      return res.status(200).json({ ok: true, result: fb });
-    }
-
-    if (!parsed) {
-      const fb = fallbackResult(locale, userAnswer);
-      return res.status(200).json({ ok: true, result: fb });
-    }
-
-    const result: AiResult = {
-      score: clamp(Number(parsed.score || 0), 0, 10),
-      diagnosis_percent: clamp(Number(parsed.diagnosis_percent || 0), 0, 100),
-      bonus: clamp(Number(parsed.bonus || 0), 0, 2),
-      verdict: isValidVerdict(parsed.verdict) ? parsed.verdict : "wrong",
-      matched_cause: String(parsed.matched_cause || ""),
-      reason_short: String(parsed.reason_short || ""),
-    };
+    const result = sanitizeResult(parsed);
 
     return res.status(200).json({
       ok: true,
       result,
     });
-  } catch (e: any) {
+  } catch (error: any) {
     return res.status(500).json({
       ok: false,
-      error: String(e?.message || e),
+      error: String(error?.message || error),
     });
   }
 }

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { useRouter } from "next/router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { DIFFICULTY_LABELS, TIME_LIMITS, type Difficulty } from "@/lib/mock-questions";
 
 type ScenarioQuestion = {
@@ -54,10 +54,6 @@ type EvaluatedResult = {
   matchedCause: string;
 };
 
-const HISTORY_STORAGE_KEY = "mechanic_test_played_scenarios_v1";
-const HISTORY_LIMIT = 200;
-const GUEST_USER_ID_KEY = "mechanic_test_guest_user_id_v1";
-
 function formatTime(totalSeconds: number) {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
@@ -107,72 +103,10 @@ function buildLocalFallbackEvaluation(
   };
 }
 
-function readPlayedScenarioIds(): string[] {
-  if (typeof window === "undefined") return [];
-
-  try {
-    const raw = window.localStorage.getItem(HISTORY_STORAGE_KEY);
-    if (!raw) return [];
-
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-
-    return parsed
-      .map((item) => String(item || "").trim())
-      .filter(Boolean)
-      .slice(0, HISTORY_LIMIT);
-  } catch {
-    return [];
-  }
-}
-
-function writePlayedScenarioIds(ids: string[]) {
-  if (typeof window === "undefined") return;
-
-  const unique = Array.from(new Set(ids.map((id) => String(id || "").trim()).filter(Boolean)));
-  const trimmed = unique.slice(-HISTORY_LIMIT);
-
-  try {
-    window.localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(trimmed));
-  } catch {}
-}
-
-function appendPlayedScenarioIds(ids: string[]) {
-  const current = readPlayedScenarioIds();
-  writePlayedScenarioIds([...current, ...ids]);
-}
-
-function createGuestUserId() {
-  return `guest_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-}
-
-function getOrCreateGuestUserId(): string {
-  if (typeof window === "undefined") return "";
-
-  try {
-    const existing = window.localStorage.getItem(GUEST_USER_ID_KEY);
-    if (existing && existing.trim()) return existing.trim();
-
-    const created = createGuestUserId();
-    window.localStorage.setItem(GUEST_USER_ID_KEY, created);
-    return created;
-  } catch {
-    return createGuestUserId();
-  }
-}
-
 export default function TestPage() {
   const router = useRouter();
-  const { lang = "en", mode = "all" } = router.query;
-
-  const selectedLanguage = String(lang || "en").toLowerCase() === "bs" ? "bs" : "en";
-  const selectedMode = (() => {
-    const value = String(mode || "all").toLowerCase();
-    if (value === "us" || value === "eu" || value === "asia" || value === "all") return value;
-    return "all";
-  })();
-
-  const isBs = selectedLanguage === "bs";
+  const { lang = "en" } = router.query;
+  const isBs = String(lang) === "bs";
 
   const [questions, setQuestions] = useState<ScenarioQuestion[]>([]);
   const [loading, setLoading] = useState(true);
@@ -185,11 +119,7 @@ export default function TestPage() {
   const [aiResults, setAiResults] = useState<(AiEvaluation | null)[]>([]);
   const [evaluating, setEvaluating] = useState(false);
 
-  const hasSavedSessionRef = useRef(false);
-
   useEffect(() => {
-    if (!router.isReady) return;
-
     let cancelled = false;
 
     async function loadTestSet() {
@@ -197,21 +127,7 @@ export default function TestPage() {
         setLoading(true);
         setLoadError("");
 
-        const excludeIds = readPlayedScenarioIds();
-        const guestUserId = getOrCreateGuestUserId();
-
-        const params = new URLSearchParams({
-          mode: selectedMode,
-          lang: selectedLanguage,
-          count: "10",
-          user_id: guestUserId,
-        });
-
-        if (excludeIds.length) {
-          params.set("excludeIds", excludeIds.join(","));
-        }
-
-        const res = await fetch(`/api/scenarios/test-set?${params.toString()}`);
+        const res = await fetch("/api/scenarios/test-set?count=10");
         const data = await res.json();
 
         if (!res.ok || !data?.ok || !Array.isArray(data?.scenarios)) {
@@ -231,7 +147,6 @@ export default function TestPage() {
         setAiResults(data.scenarios.map(() => null));
         setCurrentIndex(0);
         setFinished(false);
-        hasSavedSessionRef.current = false;
       } catch (err: any) {
         if (cancelled) return;
         setLoadError(String(err?.message || err || "Unknown error"));
@@ -245,19 +160,7 @@ export default function TestPage() {
     return () => {
       cancelled = true;
     };
-  }, [router.isReady, selectedLanguage, selectedMode]);
-
-  useEffect(() => {
-    if (!finished || !questions.length) return;
-
-    const ids = questions
-      .map((q) => String(q?.id || "").trim())
-      .filter(Boolean);
-
-    if (ids.length) {
-      appendPlayedScenarioIds(ids);
-    }
-  }, [finished, questions]);
+  }, []);
 
   const currentQuestion = questions[currentIndex];
 
@@ -350,7 +253,6 @@ export default function TestPage() {
                 "Content-Type": "application/json",
               },
               body: JSON.stringify({
-                lang: selectedLanguage,
                 question,
                 userAnswer,
               }),
@@ -423,65 +325,6 @@ export default function TestPage() {
   const answeredCount = answers.filter((entry) => entry?.answer?.trim().length > 0).length;
   const timedOutCount = answers.filter((entry) => entry?.timedOut).length;
 
-  const singlePlayerHref = `/single-player?lang=${selectedLanguage}&mode=${selectedMode}`;
-
-  useEffect(() => {
-    if (!finished || evaluating || !questions.length || hasSavedSessionRef.current) return;
-    if (aiResults.length !== questions.length) return;
-
-    const guestUserId = getOrCreateGuestUserId();
-    if (!guestUserId) return;
-
-    const items = questions.map((question, index) => {
-      const fallback = buildLocalFallbackEvaluation(answers[index]?.answer || "", isBs);
-      const ai = aiResults[index];
-
-      return {
-        scenario_id: question.id,
-        position: index + 1,
-        user_answer: answers[index]?.answer || "",
-        time_spent_seconds: answers[index]?.timeSpent || 0,
-        timed_out: !!answers[index]?.timedOut,
-        ai_score: ai?.score ?? fallback.score,
-        ai_bonus: ai?.bonus ?? fallback.bonus,
-        ai_diagnosis_percent: ai?.diagnosis_percent ?? fallback.diagnosisPercent,
-        ai_verdict: ai?.verdict ?? fallback.verdict,
-        ai_feedback: ai?.reason_short ?? fallback.feedback,
-        matched_cause: ai?.matched_cause ?? fallback.matchedCause,
-      };
-    });
-
-    hasSavedSessionRef.current = true;
-
-    fetch("/api/test/save-session", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        user_id: guestUserId,
-        mode: selectedMode,
-        locale: selectedLanguage,
-        average_score: averageScore,
-        final_rank: finalRank,
-        items,
-      }),
-    }).catch(() => {
-      hasSavedSessionRef.current = false;
-    });
-  }, [
-    finished,
-    evaluating,
-    questions,
-    aiResults,
-    answers,
-    selectedMode,
-    selectedLanguage,
-    averageScore,
-    finalRank,
-    isBs,
-  ]);
-
   if (loading) {
     return (
       <main className="min-h-screen bg-[#0a0d12] px-4 py-6 text-white">
@@ -520,7 +363,7 @@ export default function TestPage() {
                 {isBs ? "Pokušaj ponovo" : "Try Again"}
               </button>
               <Link
-                href={singlePlayerHref}
+                href="/single-player"
                 className="rounded-2xl border border-white/10 bg-black/20 px-5 py-3 font-bold text-zinc-100 transition hover:bg-white/10"
               >
                 {isBs ? "Nazad" : "Back"}
@@ -568,9 +411,7 @@ export default function TestPage() {
                 <div className="text-xs uppercase tracking-[0.2em] text-zinc-500">
                   {isBs ? "Odgovoreno" : "Answered"}
                 </div>
-                <div className="mt-2 text-xl font-black">
-                  {answeredCount} / {questions.length}
-                </div>
+                <div className="mt-2 text-xl font-black">{answeredCount} / {questions.length}</div>
               </div>
 
               <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-4 text-zinc-200">
@@ -589,27 +430,18 @@ export default function TestPage() {
 
             <div className="mt-8 space-y-6">
               {results.map(({ question, answerState, evaluation }, index) => (
-                <article
-                  key={question.id}
-                  className="rounded-3xl border border-white/10 bg-black/20 p-5"
-                >
+                <article key={question.id} className="rounded-3xl border border-white/10 bg-black/20 p-5">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <p className="text-xs font-semibold uppercase tracking-[0.22em] text-zinc-500">
                         {isBs ? "Pitanje" : "Question"} {index + 1} • {question.vehicle}
                       </p>
 
-                      <h2 className="mt-2 text-2xl font-black tracking-tight">
-                        {question.title}
-                      </h2>
+                      <h2 className="mt-2 text-2xl font-black tracking-tight">{question.title}</h2>
                     </div>
 
                     <div className="flex flex-wrap gap-2">
-                      <span
-                        className={`rounded-full border px-3 py-1 text-xs font-bold uppercase tracking-[0.2em] ${difficultyBadgeClasses(
-                          question.difficulty
-                        )}`}
-                      >
+                      <span className={`rounded-full border px-3 py-1 text-xs font-bold uppercase tracking-[0.2em] ${difficultyBadgeClasses(question.difficulty)}`}>
                         {getDifficultyText(question.difficulty, isBs)}
                       </span>
                       <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-bold uppercase tracking-[0.2em] text-zinc-300">
@@ -624,8 +456,7 @@ export default function TestPage() {
                         {isBs ? "Tvoj odgovor" : "Your Answer"}
                       </p>
                       <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-zinc-200">
-                        {answerState.answer?.trim() ||
-                          (isBs ? "Nema odgovora." : "No answer provided.")}
+                        {answerState.answer?.trim() || (isBs ? "Nema odgovora." : "No answer provided.")}
                       </p>
 
                       <div className="mt-4 flex flex-wrap gap-2 text-xs text-zinc-400">
@@ -651,8 +482,7 @@ export default function TestPage() {
                           {isBs ? "Rank" : "Rank"}: {evaluation.rank}
                         </span>
                         <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1">
-                          {isBs ? "Blizina dijagnoze" : "Diagnosis closeness"}:{" "}
-                          {evaluation.diagnosisPercent}%
+                          {isBs ? "Blizina dijagnoze" : "Diagnosis closeness"}: {evaluation.diagnosisPercent}%
                         </span>
                         <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1">
                           Bonus: +{evaluation.bonus}
@@ -671,18 +501,14 @@ export default function TestPage() {
                       <p className="text-sm font-semibold uppercase tracking-[0.2em] text-zinc-500">
                         {isBs ? "Najvjerovatniji uzrok" : "Most Likely Cause"}
                       </p>
-                      <p className="mt-3 text-sm leading-6 text-zinc-200">
-                        {question.answer_main}
-                      </p>
+                      <p className="mt-3 text-sm leading-6 text-zinc-200">{question.answer_main}</p>
                     </div>
 
                     <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                       <p className="text-sm font-semibold uppercase tracking-[0.2em] text-zinc-500">
                         {isBs ? "Zašto ECU ne baca grešku" : "Why ECU May Not Set a Fault"}
                       </p>
-                      <p className="mt-3 text-sm leading-6 text-zinc-200">
-                        {question.answer_why_no_code}
-                      </p>
+                      <p className="mt-3 text-sm leading-6 text-zinc-200">{question.answer_why_no_code}</p>
                     </div>
 
                     <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
@@ -691,10 +517,7 @@ export default function TestPage() {
                       </p>
                       <ul className="mt-3 space-y-2 text-sm leading-6 text-zinc-200">
                         {question.answer_proof.map((item, proofIndex) => (
-                          <li
-                            key={proofIndex}
-                            className="rounded-xl border border-white/8 bg-black/20 px-3 py-2"
-                          >
+                          <li key={proofIndex} className="rounded-xl border border-white/8 bg-black/20 px-3 py-2">
                             {item}
                           </li>
                         ))}
@@ -707,7 +530,7 @@ export default function TestPage() {
 
             <div className="mt-8 flex flex-wrap gap-3">
               <Link
-                href={singlePlayerHref}
+                href="/single-player"
                 className="rounded-2xl border border-white/10 bg-black/20 px-5 py-3 font-bold text-zinc-100 transition hover:bg-white/10"
               >
                 {isBs ? "Nazad" : "Back"}
@@ -741,13 +564,8 @@ export default function TestPage() {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <span
-                className={`rounded-full border px-3 py-2 text-xs font-bold uppercase tracking-[0.2em] ${difficultyBadgeClasses(
-                  currentQuestion.difficulty
-                )}`}
-              >
-                {getDifficultyText(currentQuestion.difficulty, isBs)} •{" "}
-                {formatTime(currentTimeLimit)}
+              <span className={`rounded-full border px-3 py-2 text-xs font-bold uppercase tracking-[0.2em] ${difficultyBadgeClasses(currentQuestion.difficulty)}`}>
+                {getDifficultyText(currentQuestion.difficulty, isBs)} • {formatTime(currentTimeLimit)}
               </span>
               <span
                 className={`rounded-full border px-3 py-2 text-sm font-black tracking-[0.18em] ${
@@ -761,7 +579,7 @@ export default function TestPage() {
                 ⏱ {formatTime(timeLeft)}
               </span>
               <Link
-                href={singlePlayerHref}
+                href="/single-player"
                 className="rounded-xl border border-white/10 bg-black/20 px-4 py-2 text-sm font-semibold text-zinc-200 transition hover:bg-white/10"
               >
                 ← {isBs ? "Nazad" : "Back"}
@@ -804,10 +622,7 @@ export default function TestPage() {
             <SectionCard title={isBs ? "Simptomi" : "Symptoms"} items={currentQuestion.symptoms} />
             <SectionCard title={isBs ? "U vožnji" : "Driving"} items={currentQuestion.driving} />
             <SectionCard title={isBs ? "Dodatno" : "Additional"} items={currentQuestion.extra} />
-            <SectionCard
-              title={isBs ? "Ključni detalji" : "Key Details"}
-              items={currentQuestion.key_details}
-            />
+            <SectionCard title={isBs ? "Ključni detalji" : "Key Details"} items={currentQuestion.key_details} />
           </div>
 
           <div className="mt-4 grid gap-4 lg:grid-cols-2">
@@ -862,16 +677,8 @@ type SectionCardProps = {
 
 function SectionCard({ title, items, accent = false }: SectionCardProps) {
   return (
-    <div
-      className={`rounded-2xl border p-4 ${
-        accent ? "border-orange-500/20 bg-orange-500/10" : "border-white/10 bg-black/20"
-      }`}
-    >
-      <p
-        className={`text-sm font-semibold uppercase tracking-[0.2em] ${
-          accent ? "text-orange-300" : "text-zinc-500"
-        }`}
-      >
+    <div className={`rounded-2xl border p-4 ${accent ? "border-orange-500/20 bg-orange-500/10" : "border-white/10 bg-black/20"}`}>
+      <p className={`text-sm font-semibold uppercase tracking-[0.2em] ${accent ? "text-orange-300" : "text-zinc-500"}`}>
         {title}
       </p>
 
