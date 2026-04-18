@@ -103,7 +103,19 @@ export default async function handler(
       locale: normalizedLocale,
       average_score: Number(average_score || 0),
       final_rank: String(final_rank || ""),
-      items: cleanItems,
+      items: cleanItems.map((item) => ({
+        scenario_id: item.scenario_id,
+        position: item.position,
+        user_answer: item.user_answer,
+        time_spent_seconds: item.time_spent_seconds,
+        timed_out: item.timed_out,
+        ai_score: item.ai_score,
+        ai_bonus: item.ai_bonus,
+        ai_diagnosis_percent: item.ai_diagnosis_percent,
+        ai_verdict: item.ai_verdict,
+        ai_feedback: item.ai_feedback,
+        matched_cause: item.matched_cause,
+      })),
       session_type: "single",
     });
 
