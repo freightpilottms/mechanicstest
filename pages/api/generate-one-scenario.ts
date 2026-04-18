@@ -1,209 +1,146 @@
-import type { NextApiRequest, NextApiResponse } from "next";
-import { getOpenAI } from "../../lib/openai";
-import { insertScenario, findScenarioBySignature } from "../../lib/scenario-storage";
-import { makeScenarioSignature } from "../../lib/scenario-signature";
-import { getRandomScenarioSeed, type ScenarioSeed } from "../../lib/scenario-seeds";
+import { getRandomScenarioSeed } from "@/lib/scenario-seeds";
+import OpenAI from "openai";
+import { insertScenario } from "@/lib/scenario-store";
+import { makeScenarioSignature } from "@/lib/signature";
 
-type SupportedLocale = "en" | "bs";
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY!,
+});
 
-type AIResponse = {
-  brand: string;
-  platform_type: string;
-  category: string;
-  root_cause_id: string;
-  root_cause_label: string;
-  difficulty: "easy" | "medium" | "hard";
-  title: string;
-  vehicle: string;
-  symptoms: string[];
-  driving: string[];
-  extra: string[];
-  key_details: string[];
-  questions: string[];
-  hint: string[];
-  answer_main: string;
-  answer_why_no_code: string;
-  answer_proof: string[];
-  accepted_answers: string[];
-  partial_answers: string[];
-  scoring_notes: Record<string, any>;
-};
-
-function getLocaleFromReq(req: NextApiRequest): SupportedLocale {
-  const raw = String(req.query.locale || req.query.lang || "en").toLowerCase();
-  return raw === "bs" ? "bs" : "en";
-}
-
-function validateScenario(data: any): data is AIResponse {
-  return (
-    data &&
-    typeof data.brand === "string" &&
-    typeof data.platform_type === "string" &&
-    typeof data.category === "string" &&
-    typeof data.root_cause_id === "string" &&
-    typeof data.root_cause_label === "string" &&
-    ["easy", "medium", "hard"].includes(data.difficulty) &&
-    typeof data.title === "string" &&
-    typeof data.vehicle === "string" &&
-    Array.isArray(data.symptoms) &&
-    Array.isArray(data.driving) &&
-    Array.isArray(data.extra) &&
-    Array.isArray(data.key_details) &&
-    Array.isArray(data.questions) &&
-    Array.isArray(data.hint) &&
-    typeof data.answer_main === "string" &&
-    typeof data.answer_why_no_code === "string" &&
-    Array.isArray(data.answer_proof) &&
-    Array.isArray(data.accepted_answers) &&
-    Array.isArray(data.partial_answers) &&
-    typeof data.scoring_notes === "object"
-  );
-}
-
-function buildPrompt(seed: ScenarioSeed, locale: SupportedLocale) {
-  const languageInstruction =
-    locale === "bs"
-      ? "Generate ONE realistic automotive diagnostic scenario in BOSNIAN/SERBIAN/CROATIAN language."
-      : "Generate ONE realistic automotive diagnostic scenario in ENGLISH language.";
-
-  const question1 =
-    locale === "bs"
-      ? "Najvjerovatniji uzrok (1 konkretna stvar)"
-      : "Most likely cause (1 specific thing)";
-
-  const question2 =
-    locale === "bs"
-      ? "Zašto ECU ne baca grešku"
-      : "Why the ECU does not set a fault code";
-
-  const question3 =
-    locale === "bs"
-      ? "Kako bi to dokazao u praksi"
-      : "How would you prove it in practice";
+function buildPrompt(seed: ReturnType<typeof getRandomScenarioSeed>) {
+  const context = seed.context;
 
   return `
-${languageInstruction}
+You are an expert automotive diagnostic engineer.
 
-YOU MUST USE THESE FIXED INPUTS:
-- brand: ${seed.brand}
-- vehicle: ${seed.vehicle}
-- platform_type: ${seed.platform_type}
-- category: ${seed.category}
-- difficulty: ${seed.difficulty}
-- root_cause_id: ${seed.root_cause_id}
-- root_cause_label: ${seed.root_cause_label}
+Generate a realistic diagnostic scenario.
 
-STRICT RULES:
-- Only automotive diagnostics
-- Only one concrete root cause, exactly the one provided above
-- Brand / vehicle / platform / category / root cause must stay compatible
-- Return ONLY valid JSON
-- Do not include markdown
-- Do not invent a different brand, vehicle, category, difficulty or root cause
-- Vary symptoms, context, hints and proof steps, but keep the same root cause family
-- Questions must be exactly:
-  1. ${question1}
-  2. ${question2}
-  3. ${question3}
+ROOT CAUSE (DO NOT CHANGE):
+${seed.rootCauseLabel}
 
-JSON structure:
+VEHICLE:
+${seed.brand} ${seed.vehicle}
+
+DIFFICULTY:
+${seed.difficulty}
+
+SCENARIO CONTEXT (MUST BE USED):
+- Temperature condition: ${context.temperature}
+- Load condition: ${context.load}
+- Behavior: ${context.behavior}
+- Timeline: ${context.timeline}
+
+--------------------------------------------------
+
+CRITICAL RULES:
+
+1. The root cause MUST be exactly:
+"${seed.rootCauseLabel}"
+
+2. The scenario MUST strictly follow the context provided above.
+
+3. DO NOT generate generic patterns like:
+- simple power loss without context
+- vague sensor failure without explanation
+- repetitive cold start issues
+
+4. Each scenario MUST feel different and realistic.
+
+5. Keep it clear, logical, and educational (no misleading or trick scenarios).
+
+--------------------------------------------------
+
+OUTPUT FORMAT (JSON ONLY):
+
 {
-  "brand": "${seed.brand}",
-  "platform_type": "${seed.platform_type}",
-  "category": "${seed.category}",
-  "root_cause_id": "${seed.root_cause_id}",
-  "root_cause_label": "${seed.root_cause_label}",
-  "difficulty": "${seed.difficulty}",
   "title": "...",
-  "vehicle": "${seed.vehicle}",
-  "symptoms": ["..."],
-  "driving": ["..."],
-  "extra": ["..."],
-  "key_details": ["..."],
+  "symptoms": [],
+  "driving": [],
+  "extra": [],
+  "key_details": [],
   "questions": [
-    "${question1}",
-    "${question2}",
-    "${question3}"
+    "What is the most likely root cause?",
+    "Why is there no fault code or misleading data?",
+    "How would you confirm the issue?"
   ],
-  "hint": ["..."],
+  "hint": [],
   "answer_main": "...",
   "answer_why_no_code": "...",
-  "answer_proof": ["..."],
-  "accepted_answers": ["..."],
-  "partial_answers": ["..."],
-  "scoring_notes": {
-    "directionWeight": 0.7,
-    "precisionWeight": 0.2,
-    "reasoningWeight": 0.1
-  }
+  "answer_proof": [],
+  "accepted_answers": [],
+  "partial_answers": [],
+  "scoring_notes": {}
 }
+
+IMPORTANT:
+- No explanations outside JSON
+- No markdown
+- No extra text
 `;
 }
 
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse
-) {
+export default async function handler(req: any, res: any) {
   try {
-    const openai = getOpenAI();
-    const model = process.env.OPENAI_SCENARIO_MODEL || "gpt-5-mini";
     const seed = getRandomScenarioSeed();
-    const locale = getLocaleFromReq(req);
 
-    const response = await openai.responses.create({
-      model,
-      input: buildPrompt(seed, locale),
+    const prompt = buildPrompt(seed);
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4.1-mini",
+      messages: [
+        {
+          role: "system",
+          content: "You generate structured automotive diagnostic scenarios.",
+        },
+        {
+          role: "user",
+          content: prompt,
+        },
+      ],
+      temperature: 0.8,
     });
 
-    const text = response.output_text;
-    const parsed = JSON.parse(text);
+    const text = completion.choices[0].message.content || "";
 
-    if (!validateScenario(parsed)) {
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch (err) {
       return res.status(500).json({
-        ok: false,
-        error: "AI returned invalid scenario shape",
+        error: "Invalid JSON from AI",
         raw: text,
       });
     }
 
     const signature = makeScenarioSignature({
-      brand: parsed.brand,
-      vehicle: parsed.vehicle,
-      rootCauseId: parsed.root_cause_id,
-      difficulty: parsed.difficulty,
+      brand: seed.brand,
+      vehicle: seed.vehicle,
+      rootCauseId: seed.rootCauseId,
+      difficulty: seed.difficulty,
       title: parsed.title,
-      locale,
     });
 
-    const existing = await findScenarioBySignature(signature);
-
-    if (existing) {
-      return res.status(200).json({
-        ok: true,
-        message: "Scenario already exists",
-        existing,
-        signature,
-        seed,
-      });
-    }
-
-    const inserted = await insertScenario({
+    const scenario = {
       ...parsed,
-      locale,
-      language: locale,
+      brand: seed.brand,
+      platform_type: "generic",
+      category: seed.category,
+      root_cause_id: seed.rootCauseId,
+      root_cause_label: seed.rootCauseLabel,
+      difficulty: seed.difficulty,
+      vehicle: `${seed.brand} ${seed.vehicle}`,
       signature,
-    });
+    };
+
+    const inserted = await insertScenario(scenario);
 
     return res.status(200).json({
       ok: true,
-      inserted,
-      signature,
-      seed,
+      id: inserted.id,
     });
-  } catch (error: any) {
+  } catch (err: any) {
     return res.status(500).json({
-      ok: false,
-      error: error?.message || "Unknown error",
+      error: err.message || "Unknown error",
     });
   }
 }

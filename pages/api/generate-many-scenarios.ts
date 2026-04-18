@@ -1,14 +1,8 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { getOpenAI } from "../../lib/openai";
+import { insertScenario, findScenarioBySignature } from "../../lib/scenario-storage";
 import { makeScenarioSignature } from "../../lib/scenario-signature";
-import {
-  findScenarioBySignature,
-  insertScenario,
-} from "../../lib/scenario-storage";
-import {
-  getRandomScenarioSeeds,
-  type ScenarioSeed,
-} from "../../lib/scenario-seeds";
+import { getRandomScenarioSeed, type ScenarioSeed } from "../../lib/scenario-seeds";
 
 type SupportedLocale = "en" | "bs";
 
@@ -36,7 +30,7 @@ type AIResponse = {
 };
 
 function getLocaleFromReq(req: NextApiRequest): SupportedLocale {
-  const raw = String(req.query.locale || req.query.lang || req.body?.locale || req.body?.lang || "en").toLowerCase();
+  const raw = String(req.query.locale || req.query.lang || "en").toLowerCase();
   return raw === "bs" ? "bs" : "en";
 }
 
@@ -87,6 +81,14 @@ function buildPrompt(seed: ScenarioSeed, locale: SupportedLocale) {
       ? "Kako bi to dokazao u praksi"
       : "How would you prove it in practice";
 
+  const contextBlock = `
+SCENARIO CONTEXT (MUST BE USED):
+- Temperature condition: ${seed.context.temperature}
+- Load condition: ${seed.context.load}
+- Behavior pattern: ${seed.context.behavior}
+- Failure timeline: ${seed.context.timeline}
+`;
+
   return `
 ${languageInstruction}
 
@@ -99,13 +101,27 @@ YOU MUST USE THESE FIXED INPUTS:
 - root_cause_id: ${seed.root_cause_id}
 - root_cause_label: ${seed.root_cause_label}
 
+${contextBlock}
+
 STRICT RULES:
 - Only automotive diagnostics
 - Only one concrete root cause, exactly the one provided above
-- Brand / vehicle / platform / category / difficulty / root cause must remain exactly as given
+- Brand / vehicle / platform / category / root cause must stay compatible
 - Return ONLY valid JSON
 - Do not include markdown
-- Create realistic but different symptoms/context/proof steps
+- Do not invent a different brand, vehicle, category, difficulty or root cause
+- Keep the scenario educational, clear, and realistic
+- Do NOT use misleading clues, deceptive symptoms, or trick-question style writing
+- Do NOT generate scenarios similar to repetitive common patterns such as:
+  - cold start misfire without any unique context
+  - highway power loss without variation
+  - generic sensor failure without context
+- Ensure each scenario has a UNIQUE context by clearly using:
+  - the provided temperature condition
+  - the provided load situation
+  - the provided behavior pattern
+  - the provided timeline of failure
+- Vary symptoms, driving context, hints and proof steps, but keep the same root cause family
 - Questions must be exactly:
   1. ${question1}
   2. ${question2}
@@ -142,109 +158,79 @@ JSON structure:
     "reasoningWeight": 0.1
   }
 }
+
+QUALITY CHECK BEFORE RETURNING JSON:
+- The scenario must not feel generic
+- The context must be clearly visible in the symptoms/driving story
+- The root cause must remain exactly the same as provided
+- The scenario must be realistic and educational, not misleading
 `;
-}
-
-async function generateFromSeed(seed: ScenarioSeed, locale: SupportedLocale) {
-  const openai = getOpenAI();
-  const model = process.env.OPENAI_SCENARIO_MODEL || "gpt-5-mini";
-
-  const response = await openai.responses.create({
-    model,
-    input: buildPrompt(seed, locale),
-  });
-
-  const text = response.output_text;
-  const parsed = JSON.parse(text);
-
-  if (!validateScenario(parsed)) {
-    throw new Error("AI returned invalid scenario shape");
-  }
-
-  return parsed;
 }
 
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
-  if (req.method !== "POST" && req.method !== "GET") {
-    return res.status(405).json({ ok: false, error: "Method not allowed" });
-  }
-
   try {
-    const rawCount = Number(req.body?.count ?? req.query.count ?? 10);
-    const count = Math.max(
-      1,
-      Math.min(20, Number.isFinite(rawCount) ? rawCount : 10)
-    );
+    const openai = getOpenAI();
+    const model = process.env.OPENAI_SCENARIO_MODEL || "gpt-5-mini";
+    const seed = getRandomScenarioSeed();
     const locale = getLocaleFromReq(req);
 
-    const seeds = getRandomScenarioSeeds(count);
+    const response = await openai.responses.create({
+      model,
+      input: buildPrompt(seed, locale),
+    });
 
-    const created: Array<{ id: string; signature: string; seed: ScenarioSeed }> = [];
-    const existing: Array<{ id: string; signature: string; seed: ScenarioSeed }> = [];
-    const failed: Array<{ error: string; seed: ScenarioSeed }> = [];
+    const text = response.output_text;
+    const parsed = JSON.parse(text);
 
-    for (const seed of seeds) {
-      try {
-        const parsed = await generateFromSeed(seed, locale);
-
-        const signature = makeScenarioSignature({
-          brand: parsed.brand,
-          vehicle: parsed.vehicle,
-          rootCauseId: parsed.root_cause_id,
-          difficulty: parsed.difficulty,
-          title: parsed.title,
-          locale,
-        });
-
-        const alreadyExists = await findScenarioBySignature(signature);
-
-        if (alreadyExists) {
-          existing.push({
-            id: alreadyExists.id,
-            signature,
-            seed,
-          });
-          continue;
-        }
-
-        const inserted = await insertScenario({
-          ...parsed,
-          locale,
-          language: locale,
-          signature,
-        });
-
-        created.push({
-          id: inserted.id,
-          signature,
-          seed,
-        });
-      } catch (err: any) {
-        failed.push({
-          error: String(err?.message || err),
-          seed,
-        });
-      }
+    if (!validateScenario(parsed)) {
+      return res.status(500).json({
+        ok: false,
+        error: "AI returned invalid scenario shape",
+        raw: text,
+      });
     }
+
+    const signature = makeScenarioSignature({
+      brand: parsed.brand,
+      vehicle: parsed.vehicle,
+      rootCauseId: parsed.root_cause_id,
+      difficulty: parsed.difficulty,
+      title: parsed.title,
+      locale,
+    });
+
+    const existing = await findScenarioBySignature(signature);
+
+    if (existing) {
+      return res.status(200).json({
+        ok: true,
+        message: "Scenario already exists",
+        existing,
+        signature,
+        seed,
+      });
+    }
+
+    const inserted = await insertScenario({
+      ...parsed,
+      locale,
+      language: locale,
+      signature,
+    });
 
     return res.status(200).json({
       ok: true,
-      requested: count,
-      locale,
-      createdCount: created.length,
-      existingCount: existing.length,
-      failedCount: failed.length,
-      created,
-      existing,
-      failed,
+      inserted,
+      signature,
+      seed,
     });
-  } catch (e: any) {
+  } catch (error: any) {
     return res.status(500).json({
       ok: false,
-      error: String(e?.message || e),
+      error: error?.message || "Unknown error",
     });
   }
 }
