@@ -1,15 +1,20 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { getScenariosForMode } from "@/lib/scenario-storage";
+import { getScenariosForMode } from "../../../lib/scenario-storage";
+
+type Difficulty = "easy" | "medium" | "hard";
 
 type StoredScenario = {
   id?: string;
-  difficulty: "easy" | "medium" | "hard";
+  brand?: string;
+  vehicle?: string;
+  difficulty: Difficulty;
+  root_cause_id?: string;
   times_used?: number;
   created_at?: string;
   [key: string]: any;
 };
 
-function shuffle<T>(arr: T[]) {
+function shuffle<T>(arr: T[]): T[] {
   const copy = [...arr];
   for (let i = copy.length - 1; i > 0; i -= 1) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -18,10 +23,94 @@ function shuffle<T>(arr: T[]) {
   return copy;
 }
 
-function pickOneByDifficulty(pool: StoredScenario[], difficulty: "easy" | "medium" | "hard") {
-  const filtered = pool.filter((item) => item.difficulty === difficulty);
-  if (!filtered.length) return null;
-  return shuffle(filtered)[0];
+function uniqueById(items: StoredScenario[]): StoredScenario[] {
+  const map = new Map<string, StoredScenario>();
+  for (const item of items) {
+    if (item?.id) {
+      map.set(String(item.id), item);
+    }
+  }
+  return Array.from(map.values());
+}
+
+function sortPool(items: StoredScenario[]): StoredScenario[] {
+  return [...items].sort((a, b) => {
+    const aUsed = Number(a.times_used || 0);
+    const bUsed = Number(b.times_used || 0);
+    if (aUsed !== bUsed) return aUsed - bUsed;
+
+    const aCreated = String(a.created_at || "");
+    const bCreated = String(b.created_at || "");
+    return bCreated.localeCompare(aCreated);
+  });
+}
+
+function pickBestCandidate(
+  pool: StoredScenario[],
+  usedIds: Set<string>,
+  usedVehicles: Set<string>,
+  usedRootCauses: Set<string>
+): StoredScenario | null {
+  const available = pool.filter((item) => item?.id && !usedIds.has(String(item.id)));
+  if (!available.length) return null;
+
+  const perfect = available.filter((item) => {
+    const vehicle = String(item.vehicle || "").trim().toLowerCase();
+    const rootCause = String(item.root_cause_id || "").trim().toLowerCase();
+    return !usedVehicles.has(vehicle) && !usedRootCauses.has(rootCause);
+  });
+  if (perfect.length) return perfect[0];
+
+  const noRootRepeat = available.filter((item) => {
+    const rootCause = String(item.root_cause_id || "").trim().toLowerCase();
+    return !usedRootCauses.has(rootCause);
+  });
+  if (noRootRepeat.length) return noRootRepeat[0];
+
+  const noVehicleRepeat = available.filter((item) => {
+    const vehicle = String(item.vehicle || "").trim().toLowerCase();
+    return !usedVehicles.has(vehicle);
+  });
+  if (noVehicleRepeat.length) return noVehicleRepeat[0];
+
+  return available[0];
+}
+
+function addScenario(
+  selected: StoredScenario[],
+  scenario: StoredScenario | null,
+  usedIds: Set<string>,
+  usedVehicles: Set<string>,
+  usedRootCauses: Set<string>
+) {
+  if (!scenario?.id) return false;
+
+  const id = String(scenario.id);
+  if (usedIds.has(id)) return false;
+
+  selected.push(scenario);
+  usedIds.add(id);
+
+  const vehicle = String(scenario.vehicle || "").trim().toLowerCase();
+  const rootCause = String(scenario.root_cause_id || "").trim().toLowerCase();
+
+  if (vehicle) usedVehicles.add(vehicle);
+  if (rootCause) usedRootCauses.add(rootCause);
+
+  return true;
+}
+
+function buildTargetDistribution(count: number) {
+  if (count <= 1) return { easy: 0, medium: 0, hard: 1 };
+  if (count === 2) return { easy: 1, medium: 0, hard: 1 };
+  if (count === 3) return { easy: 1, medium: 1, hard: 1 };
+  if (count === 4) return { easy: 1, medium: 2, hard: 1 };
+  if (count === 5) return { easy: 1, medium: 2, hard: 2 };
+  if (count === 6) return { easy: 2, medium: 2, hard: 2 };
+  if (count === 7) return { easy: 2, medium: 3, hard: 2 };
+  if (count === 8) return { easy: 2, medium: 3, hard: 3 };
+  if (count === 9) return { easy: 3, medium: 3, hard: 3 };
+  return { easy: 3, medium: 4, hard: 3 };
 }
 
 export default async function handler(
@@ -36,7 +125,8 @@ export default async function handler(
     const rawCount = Number(req.query.count || 10);
     const count = Math.max(1, Math.min(20, Number.isFinite(rawCount) ? rawCount : 10));
 
-    const allScenarios = await getScenariosForMode("all", 200);
+    const allScenariosRaw = await getScenariosForMode("all", 500);
+    const allScenarios = sortPool(uniqueById(allScenariosRaw));
 
     if (!allScenarios.length) {
       return res.status(404).json({
@@ -45,42 +135,54 @@ export default async function handler(
       });
     }
 
-    const uniqueById = new Map<string, StoredScenario>();
-    for (const item of allScenarios) {
-      if (item?.id) uniqueById.set(String(item.id), item);
-    }
+    const easyPool = allScenarios.filter((x) => x.difficulty === "easy");
+    const mediumPool = allScenarios.filter((x) => x.difficulty === "medium");
+    const hardPool = allScenarios.filter((x) => x.difficulty === "hard");
 
-    const pool = Array.from(uniqueById.values());
+    const target = buildTargetDistribution(count);
 
     const selected: StoredScenario[] = [];
     const usedIds = new Set<string>();
+    const usedVehicles = new Set<string>();
+    const usedRootCauses = new Set<string>();
 
-    const easyOne = pickOneByDifficulty(pool, "easy");
-    const mediumOne = pickOneByDifficulty(pool, "medium");
-    const hardOne = pickOneByDifficulty(pool, "hard");
-
-    for (const item of [easyOne, mediumOne, hardOne]) {
-      if (item?.id && !usedIds.has(String(item.id)) && selected.length < count) {
-        selected.push(item);
-        usedIds.add(String(item.id));
-      }
+    for (let i = 0; i < target.easy; i += 1) {
+      const picked = pickBestCandidate(easyPool, usedIds, usedVehicles, usedRootCauses);
+      addScenario(selected, picked, usedIds, usedVehicles, usedRootCauses);
     }
 
-    const remainingPool = shuffle(
-      pool.filter((item) => item?.id && !usedIds.has(String(item.id)))
-    );
+    for (let i = 0; i < target.medium; i += 1) {
+      const picked = pickBestCandidate(mediumPool, usedIds, usedVehicles, usedRootCauses);
+      addScenario(selected, picked, usedIds, usedVehicles, usedRootCauses);
+    }
 
-    for (const item of remainingPool) {
-      if (selected.length >= count) break;
-      selected.push(item);
-      usedIds.add(String(item.id));
+    for (let i = 0; i < target.hard; i += 1) {
+      const picked = pickBestCandidate(hardPool, usedIds, usedVehicles, usedRootCauses);
+      addScenario(selected, picked, usedIds, usedVehicles, usedRootCauses);
     }
 
     if (selected.length < count) {
+      const remainingPool = allScenarios.filter(
+        (item) => item?.id && !usedIds.has(String(item.id))
+      );
+
+      while (selected.length < count && remainingPool.length) {
+        const picked = pickBestCandidate(
+          remainingPool,
+          usedIds,
+          usedVehicles,
+          usedRootCauses
+        );
+
+        if (!picked) break;
+        addScenario(selected, picked, usedIds, usedVehicles, usedRootCauses);
+      }
+    }
+
+    if (!selected.length) {
       return res.status(400).json({
         ok: false,
-        error: `Not enough scenarios in database. Required: ${count}, available unique: ${selected.length}`,
-        available: selected.length,
+        error: "Could not build test set from current database",
       });
     }
 
@@ -90,12 +192,23 @@ export default async function handler(
       hard: selected.filter((x) => x.difficulty === "hard").length,
     };
 
+    const uniqueVehicles = new Set(
+      selected.map((x) => String(x.vehicle || "").trim().toLowerCase()).filter(Boolean)
+    ).size;
+
+    const uniqueRootCauses = new Set(
+      selected.map((x) => String(x.root_cause_id || "").trim().toLowerCase()).filter(Boolean)
+    ).size;
+
     return res.status(200).json({
       ok: true,
       scenarios: shuffle(selected),
       meta: {
         count: selected.length,
+        requested: count,
         difficultyBreakdown,
+        uniqueVehicles,
+        uniqueRootCauses,
       },
     });
   } catch (e: any) {
