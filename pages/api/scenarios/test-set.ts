@@ -1,7 +1,12 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { getScenariosForMode } from "../../../lib/scenario-storage";
+import {
+  getRecentPlayedScenarioIdsForUser,
+  getScenariosForMode,
+} from "../../../lib/scenario-storage";
 
 type Difficulty = "easy" | "medium" | "hard";
+type ScenarioMode = "all" | "us" | "eu" | "asia";
+type ScenarioLocale = "bs" | "en";
 
 type StoredScenario = {
   id?: string;
@@ -11,6 +16,9 @@ type StoredScenario = {
   root_cause_id?: string;
   times_used?: number;
   created_at?: string;
+  locale?: string;
+  language?: string;
+  lang?: string;
   [key: string]: any;
 };
 
@@ -43,6 +51,55 @@ function sortPool(items: StoredScenario[]): StoredScenario[] {
     const bCreated = String(b.created_at || "");
     return bCreated.localeCompare(aCreated);
   });
+}
+
+function normalizeMode(value: unknown): ScenarioMode {
+  const v = String(value || "").trim().toLowerCase();
+  if (v === "us" || v === "eu" || v === "asia" || v === "all") return v;
+  return "all";
+}
+
+function normalizeLocale(value: unknown): ScenarioLocale {
+  const v = String(value || "").trim().toLowerCase();
+  if (v === "bs" || v === "en") return v;
+  return "en";
+}
+
+function getScenarioLocale(item: StoredScenario): string {
+  return String(item.locale || item.language || item.lang || "")
+    .trim()
+    .toLowerCase();
+}
+
+function filterByLocale(
+  items: StoredScenario[],
+  locale: ScenarioLocale
+): StoredScenario[] {
+  const exact = items.filter((item) => getScenarioLocale(item) === locale);
+
+  if (exact.length > 0) return exact;
+
+  const noLocaleInfo = items.filter((item) => !getScenarioLocale(item));
+  if (noLocaleInfo.length > 0) return noLocaleInfo;
+
+  return items;
+}
+
+function parseExcludeIds(value: unknown): Set<string> {
+  const raw = String(value || "").trim();
+  if (!raw) return new Set<string>();
+
+  return new Set(
+    raw
+      .split(",")
+      .map((item) => String(item || "").trim())
+      .filter(Boolean)
+      .slice(-300)
+  );
+}
+
+function normalizeUserId(value: unknown): string {
+  return String(value || "").trim();
 }
 
 function pickBestCandidate(
@@ -125,19 +182,48 @@ export default async function handler(
     const rawCount = Number(req.query.count || 10);
     const count = Math.max(1, Math.min(20, Number.isFinite(rawCount) ? rawCount : 10));
 
-    const allScenariosRaw = await getScenariosForMode("all", 500);
-    const allScenarios = sortPool(uniqueById(allScenariosRaw));
+    const mode = normalizeMode(req.query.mode);
+    const locale = normalizeLocale(req.query.lang || req.query.locale);
+    const guestUserId = normalizeUserId(req.query.user_id || req.query.guest_user_id);
+    const localExcludeIds = parseExcludeIds(req.query.excludeIds);
 
-    if (!allScenarios.length) {
+    let dbExcludeIds = new Set<string>();
+
+    if (guestUserId) {
+      try {
+        const recentIds = await getRecentPlayedScenarioIdsForUser(guestUserId, 150);
+        dbExcludeIds = new Set(
+          recentIds.map((id) => String(id || "").trim()).filter(Boolean)
+        );
+      } catch {
+        dbExcludeIds = new Set<string>();
+      }
+    }
+
+    const combinedExcludeIds = new Set<string>([
+      ...Array.from(localExcludeIds),
+      ...Array.from(dbExcludeIds),
+    ]);
+
+    const allScenariosRaw = await getScenariosForMode(mode, 500);
+    const localePool = sortPool(filterByLocale(uniqueById(allScenariosRaw), locale));
+
+    if (!localePool.length) {
       return res.status(404).json({
         ok: false,
         error: "No scenarios found",
       });
     }
 
-    const easyPool = allScenarios.filter((x) => x.difficulty === "easy");
-    const mediumPool = allScenarios.filter((x) => x.difficulty === "medium");
-    const hardPool = allScenarios.filter((x) => x.difficulty === "hard");
+    const freshPool = localePool.filter(
+      (item) => item?.id && !combinedExcludeIds.has(String(item.id))
+    );
+
+    const basePool = freshPool.length >= count ? freshPool : localePool;
+
+    const easyPool = basePool.filter((x) => x.difficulty === "easy");
+    const mediumPool = basePool.filter((x) => x.difficulty === "medium");
+    const hardPool = basePool.filter((x) => x.difficulty === "hard");
 
     const target = buildTargetDistribution(count);
 
@@ -162,7 +248,7 @@ export default async function handler(
     }
 
     if (selected.length < count) {
-      const remainingPool = allScenarios.filter(
+      const remainingPool = basePool.filter(
         (item) => item?.id && !usedIds.has(String(item.id))
       );
 
@@ -206,6 +292,13 @@ export default async function handler(
       meta: {
         count: selected.length,
         requested: count,
+        mode,
+        locale,
+        guestUserId: guestUserId || null,
+        localExcludedCount: localExcludeIds.size,
+        dbExcludedCount: dbExcludeIds.size,
+        excludedCount: combinedExcludeIds.size,
+        usedHistoryFilter: freshPool.length >= count,
         difficultyBreakdown,
         uniqueVehicles,
         uniqueRootCauses,
