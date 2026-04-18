@@ -60,11 +60,6 @@ function formatTime(totalSeconds: number) {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
-function scrollPageToTop() {
-  if (typeof window === "undefined") return;
-  window.scrollTo({ top: 0, behavior: "smooth" });
-}
-
 function getRank(score: number) {
   if (score >= 9) return "Master Tech";
   if (score >= 7) return "Advanced";
@@ -123,6 +118,7 @@ export default function TestPage() {
   const [timerReady, setTimerReady] = useState(false);
   const [aiResults, setAiResults] = useState<(AiEvaluation | null)[]>([]);
   const [evaluating, setEvaluating] = useState(false);
+  const [showFloatingTimer, setShowFloatingTimer] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -169,6 +165,21 @@ export default function TestPage() {
   }, [lang]);
 
   const currentQuestion = questions[currentIndex];
+
+  useEffect(() => {
+    function onScroll() {
+      setShowFloatingTimer(window.innerWidth < 1024 && window.scrollY > 140 && !finished);
+    }
+
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+    };
+  }, [finished, currentIndex]);
 
   useEffect(() => {
     if (!currentQuestion || finished) return;
@@ -231,7 +242,7 @@ export default function TestPage() {
       return next;
     });
 
-    scrollPageToTop();
+    window.scrollTo({ top: 0, behavior: "smooth" });
 
     if (currentIndex < questions.length - 1) {
       setCurrentIndex((prev) => prev + 1);
@@ -242,6 +253,12 @@ export default function TestPage() {
     setTimeout(() => {
       evaluateAllAnswers();
     }, 0);
+  }
+
+  function handleQuit() {
+    const confirmed = window.confirm(isBs ? "Tako lako odustaješ?" : "Giving up that easily?");
+    if (!confirmed) return;
+    router.push(isBs ? "/single-player?lang=bs" : "/single-player?lang=en");
   }
 
   async function evaluateAllAnswers() {
@@ -335,8 +352,8 @@ export default function TestPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-[#0a0d12] px-4 py-6 text-white">
-        <div className="mx-auto max-w-7xl">
+      <main className="min-h-screen bg-[#0a0d12] px-3 py-4 text-white sm:px-4 sm:py-6 lg:px-6">
+        <div className="mx-auto max-w-6xl">
           <section className="rounded-3xl border border-white/10 bg-white/5 p-8 backdrop-blur">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-orange-400">
               Mechanic IQ Test
@@ -352,8 +369,8 @@ export default function TestPage() {
 
   if (loadError) {
     return (
-      <main className="min-h-screen bg-[#0a0d12] px-4 py-6 text-white">
-        <div className="mx-auto max-w-7xl">
+      <main className="min-h-screen bg-[#0a0d12] px-3 py-4 text-white sm:px-4 sm:py-6 lg:px-6">
+        <div className="mx-auto max-w-6xl">
           <section className="rounded-3xl border border-red-500/20 bg-red-500/10 p-8 backdrop-blur">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-red-300">
               {isBs ? "Greška" : "Error"}
@@ -389,9 +406,9 @@ export default function TestPage() {
 
   if (finished) {
     return (
-      <main className="min-h-screen bg-[#0a0d12] px-4 py-6 text-white">
+      <main className="min-h-screen bg-[#0a0d12] px-3 py-4 text-white sm:px-4 sm:py-6 lg:px-6">
         <div className="mx-auto max-w-6xl">
-          <section className="rounded-3xl border border-white/10 bg-white/5 p-4 backdrop-blur sm:p-6 lg:p-7">
+          <section className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur sm:p-8">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-orange-400">
               {isBs ? "Rezultati testa" : "Test Results"}
             </p>
@@ -559,9 +576,38 @@ export default function TestPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#0a0d12] px-4 py-6 text-white">
+    <main className="min-h-screen bg-[#0a0d12] px-3 py-4 text-white sm:px-4 sm:py-6 lg:px-6">
+      {showFloatingTimer ? (
+        <div className="fixed right-3 top-3 z-40 rounded-2xl border border-white/10 bg-[#0f141b]/95 px-3 py-3 shadow-2xl backdrop-blur lg:hidden">
+          <div className="flex items-center gap-3">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-400">
+              {isBs ? "Vrijeme" : "Time"}
+            </span>
+            <span
+              className={`rounded-full border px-3 py-1 text-xs font-bold uppercase tracking-[0.2em] ${
+                timerCritical
+                  ? "border-red-500/30 bg-red-500/10 text-red-300"
+                  : timerWarning
+                    ? "border-orange-500/30 bg-orange-500/10 text-orange-300"
+                    : "border-white/10 bg-white/5 text-zinc-300"
+              }`}
+            >
+              {formatTime(timeLeft)}
+            </span>
+          </div>
+          <div className="mt-3 h-1.5 w-28 overflow-hidden rounded-full bg-white/10">
+            <div
+              className={`h-full rounded-full transition-all ${
+                timerCritical ? "bg-red-500" : timerWarning ? "bg-orange-500" : "bg-emerald-500"
+              }`}
+              style={{ width: `${timerPercent}%` }}
+            />
+          </div>
+        </div>
+      ) : null}
+
       <div className="mx-auto max-w-6xl">
-        <section className="rounded-3xl border border-white/10 bg-white/5 p-4 backdrop-blur sm:p-6 lg:p-7">
+        <section className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur sm:p-8">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-orange-400">
@@ -570,6 +616,10 @@ export default function TestPage() {
               <h1 className="mt-3 text-3xl font-black tracking-tight">
                 {currentQuestion?.title}
               </h1>
+              <div className="mt-4 inline-flex rounded-2xl border border-white/10 bg-black/20 px-4 py-2 text-sm font-semibold text-zinc-200">
+                <span className="text-zinc-400">{isBs ? "Vozilo:" : "Vehicle:"}</span>
+                <span className="ml-2">{currentQuestion?.vehicle}</span>
+              </div>
             </div>
 
             <div className="flex flex-wrap gap-2">
@@ -591,52 +641,8 @@ export default function TestPage() {
             />
           </div>
 
-          <div className="mt-4 flex flex-col gap-3 sm:mt-5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between lg:hidden">
-            <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-500">
-                {isBs ? "Vozilo" : "Vehicle"}
-              </p>
-              <p className="mt-1 text-sm font-bold text-zinc-100">{currentQuestion?.vehicle}</p>
-            </div>
-
-            <div className="sticky top-2 z-20 rounded-2xl border border-white/10 bg-[#0a0d12]/95 px-4 py-3 shadow-[0_10px_30px_rgba(0,0,0,0.35)] backdrop-blur">
-              <div className="flex items-center justify-between gap-4">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-500">
-                  {isBs ? "Vrijeme" : "Time"}
-                </p>
-                <span
-                  className={`rounded-full border px-3 py-1 text-xs font-bold uppercase tracking-[0.2em] ${
-                    timerCritical
-                      ? "border-red-500/30 bg-red-500/10 text-red-300"
-                      : timerWarning
-                        ? "border-orange-500/30 bg-orange-500/10 text-orange-300"
-                        : "border-white/10 bg-white/5 text-zinc-300"
-                  }`}
-                >
-                  {formatTime(timeLeft)}
-                </span>
-              </div>
-
-              <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
-                <div
-                  className={`h-full rounded-full transition-all ${
-                    timerCritical ? "bg-red-500" : timerWarning ? "bg-orange-500" : "bg-emerald-500"
-                  }`}
-                  style={{ width: `${timerPercent}%` }}
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-4 grid gap-4 lg:grid-cols-[1.45fr_0.85fr] xl:grid-cols-[1.55fr_0.8fr]">
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-4 sm:p-5 lg:p-6">
-              <div className="mb-5 hidden rounded-2xl border border-white/10 bg-white/5 px-4 py-4 lg:block">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-500">
-                  {isBs ? "Vozilo" : "Vehicle"}
-                </p>
-                <p className="mt-1 text-base font-bold text-zinc-100">{currentQuestion?.vehicle}</p>
-              </div>
-
+          <div className="mt-6 grid gap-4 lg:grid-cols-[1.45fr_0.85fr] xl:gap-5">
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-4 sm:p-5">
               <p className="text-sm font-semibold uppercase tracking-[0.2em] text-zinc-500">
                 {isBs ? "Simptomi" : "Symptoms"}
               </p>
@@ -687,44 +693,40 @@ export default function TestPage() {
               ) : null}
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-4 sm:p-5 lg:sticky lg:top-4 lg:self-start lg:p-6">
-              <div className="hidden lg:block">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-semibold uppercase tracking-[0.2em] text-zinc-500">
-                    {isBs ? "Vrijeme" : "Time"}
-                  </p>
-                  <span
-                    className={`rounded-full border px-3 py-1 text-xs font-bold uppercase tracking-[0.2em] ${
-                      timerCritical
-                        ? "border-red-500/30 bg-red-500/10 text-red-300"
-                        : timerWarning
-                          ? "border-orange-500/30 bg-orange-500/10 text-orange-300"
-                          : "border-white/10 bg-white/5 text-zinc-300"
-                    }`}
-                  >
-                    {formatTime(timeLeft)}
-                  </span>
-                </div>
-
-                <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
-                  <div
-                    className={`h-full rounded-full transition-all ${
-                      timerCritical ? "bg-red-500" : timerWarning ? "bg-orange-500" : "bg-emerald-500"
-                    }`}
-                    style={{ width: `${timerPercent}%` }}
-                  />
-                </div>
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-4 sm:p-5 lg:sticky lg:top-6 lg:self-start">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-zinc-500">
+                  {isBs ? "Vrijeme" : "Time"}
+                </p>
+                <span
+                  className={`rounded-full border px-3 py-1 text-xs font-bold uppercase tracking-[0.2em] ${
+                    timerCritical
+                      ? "border-red-500/30 bg-red-500/10 text-red-300"
+                      : timerWarning
+                        ? "border-orange-500/30 bg-orange-500/10 text-orange-300"
+                        : "border-white/10 bg-white/5 text-zinc-300"
+                  }`}
+                >
+                  {formatTime(timeLeft)}
+                </span>
               </div>
 
-              <div className="mt-0 space-y-4 lg:mt-6">
+              <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
+                <div
+                  className={`h-full rounded-full transition-all ${
+                    timerCritical ? "bg-red-500" : timerWarning ? "bg-orange-500" : "bg-emerald-500"
+                  }`}
+                  style={{ width: `${timerPercent}%` }}
+                />
+              </div>
+
+              <div className="mt-6 space-y-4">
                 <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">
                     {isBs ? "Zadatak" : "Task"}
                   </p>
                   <p className="mt-2 text-sm leading-6 text-zinc-200">
-                    {isBs
-                      ? "Napiši najvjerovatniji uzrok."
-                      : "Write the single most likely cause."}
+                    {isBs ? "Upiši najvjerovatniji uzrok kvara." : "Write the most likely cause of the fault."}
                   </p>
                 </div>
 
@@ -734,8 +736,8 @@ export default function TestPage() {
                   </p>
                   <p className="mt-2 text-sm leading-6 text-zinc-200">
                     {isBs
-                      ? "Ako napišete više odgovora, prvi se uzima kao primarni odgovor, a ostali kao alternativa. Ocjena se daje prvenstveno na osnovu prvog odgovora."
-                      : "If you write more than one answer, the first one is treated as your primary answer and the rest as alternatives. Scoring is based mainly on the first answer."}
+                      ? "Ako upišeš više odgovora, prvi se računa kao glavni, a ostali kao alternativa. Na osnovu toga dobiješ bodove."
+                      : "If you write more than one answer, the first one counts as your main answer and the rest count as alternatives. Your score is based on that."}
                   </p>
                 </div>
 
@@ -745,8 +747,8 @@ export default function TestPage() {
                   </p>
                   <p className="mt-2 text-sm leading-6 text-orange-100">
                     {isBs
-                      ? "Dobijate dodatni bod ukoliko detaljnije i tehnički preciznije objasnite problem."
-                      : "You get one bonus point if you explain the problem in more detail and with better technical precision."}
+                      ? "Dobiješ dodatni bod ako detaljnije objasniš problem ili kako bi ga dokazao u praksi."
+                      : "You get an extra point if you explain the problem in more detail or how you would prove it in practice."}
                   </p>
                 </div>
               </div>
@@ -762,8 +764,8 @@ export default function TestPage() {
                   className="mt-3 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm leading-6 text-zinc-100 outline-none transition placeholder:text-zinc-500 focus:border-orange-500/40 focus:bg-white/10"
                   placeholder={
                     isBs
-                      ? "Napiši dijagnozu, zašto nema greške i kako bi dokazao kvar..."
-                      : "Write your diagnosis, why there is no fault code, and how you would prove it..."
+                      ? "Upiši dijagnozu, zašto nema greške i kako bi dokazao kvar..."
+                      : "Write your diagnosis, why there is no fault code, and how you would prove the fault..."
                   }
                 />
               </label>
@@ -774,17 +776,16 @@ export default function TestPage() {
                   onClick={() => saveAndAdvance(false)}
                   className="rounded-2xl bg-orange-500 px-5 py-3 font-bold text-black transition hover:bg-orange-400"
                 >
-                  {currentIndex === questions.length - 1
-                    ? (isBs ? "Završi test" : "Finish Test")
-                    : (isBs ? "Sačuvaj i dalje" : "Save & Next")}
+                  {isBs ? "Odgovori" : "Answer"}
                 </button>
 
-                <Link
-                  href={isBs ? "/single-player?lang=bs" : "/single-player?lang=en"}
+                <button
+                  type="button"
+                  onClick={handleQuit}
                   className="rounded-2xl border border-white/10 bg-black/20 px-5 py-3 font-bold text-zinc-100 transition hover:bg-white/10"
                 >
-                  {isBs ? "Prekini" : "Quit"}
-                </Link>
+                  {isBs ? "Odustani" : "Give Up"}
+                </button>
               </div>
             </div>
           </div>

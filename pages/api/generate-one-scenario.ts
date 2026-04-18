@@ -103,7 +103,10 @@ STRICT RULES:
 - Only automotive diagnostics
 - Only one concrete root cause, exactly the one provided above
 - Brand / vehicle / platform / category / root cause must stay compatible
-- Mechanical compatibility is mandatory: do not mention chain issues on belt engines, do not mention belt issues on chain engines, and do not use diesel-only systems on petrol vehicles or petrol-only systems on diesel vehicles
+- The failure MUST be mechanically possible for the exact engine/platform type
+- Never mention timing chain for a timing-belt engine unless that engine truly uses a chain
+- Never mention timing belt for a timing-chain engine unless that engine truly uses a belt
+- Never use diesel-only causes for petrol vehicles, and never use petrol-only causes for diesel vehicles
 - Return ONLY valid JSON
 - Do not include markdown
 - Do not invent a different brand, vehicle, category, difficulty or root cause
@@ -160,7 +163,6 @@ QUALITY CHECK BEFORE RETURNING JSON:
 - The scenario must not feel generic
 - The context must be clearly visible in the symptoms/driving story
 - The root cause must remain exactly the same as provided
-- The scenario text must stay mechanically compatible with the provided platform_type
 - The scenario must be realistic and educational, not misleading
 `;
 }

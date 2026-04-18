@@ -24,52 +24,47 @@ type StoredScenario = {
 };
 
 
-function scenarioLooksCompatible(item: StoredScenario): boolean {
-  const platform = String(item.platform_type || "").toLowerCase();
-  const haystack = [
-    item.title,
+function scenarioText(item: StoredScenario): string {
+  return [
+    item.platform_type,
     item.vehicle,
+    item.category,
+    item.root_cause_id,
+    item.root_cause_label,
+    item.title,
     ...(Array.isArray(item.symptoms) ? item.symptoms : []),
     ...(Array.isArray(item.driving) ? item.driving : []),
     ...(Array.isArray(item.extra) ? item.extra : []),
     ...(Array.isArray(item.key_details) ? item.key_details : []),
-    ...(Array.isArray(item.hint) ? item.hint : []),
-    item.answer_main,
-    item.answer_why_no_code,
-    ...(Array.isArray(item.answer_proof) ? item.answer_proof : []),
     ...(Array.isArray(item.accepted_answers) ? item.accepted_answers : []),
     ...(Array.isArray(item.partial_answers) ? item.partial_answers : []),
-    item.root_cause_label,
-    item.root_cause_id,
-    item.category,
+    item.answer_main,
+    item.answer_why_no_code,
   ]
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
+}
 
-  if (platform.includes("_belt") && /\blanac\b|\bchain\b/.test(haystack)) {
-    return false;
-  }
+function isMechanicallyCompatible(item: StoredScenario): boolean {
+  const text = scenarioText(item);
+  const platform = String(item.platform_type || "").toLowerCase();
+  const vehicle = String(item.vehicle || "").toLowerCase();
+  const combined = `${platform} ${vehicle}`;
 
-  if (platform.includes("_chain") && /\bremen\b|\bbelt\b/.test(haystack)) {
-    return false;
-  }
+  const looksDiesel = /\b(diesel|tdi|hdi|dci|jtd|cdi|crdi|multijet|duratorq|tddi|tdci|d-4d|dci|cdi)\b/.test(combined);
+  const looksPetrol = /\b(petrol|gasoline|tsi|tfsi|fsi|gdi|mpi|ecoboost|skyactiv-g|t-jet|vti)\b/.test(combined);
+  const beltEngine = /\b(belt|remen)\b/.test(combined);
+  const chainEngine = /\b(chain|lanac)\b/.test(combined);
 
-  if (platform.includes("petrol") && /\bdpf\b|\bdizna\b|\binjektor dizela\b|\bglow plug\b|\bgrijac\b|\bgrejac\b/.test(haystack)) {
-    return false;
-  }
+  if (beltEngine && /\b(chain|timing chain|lanac)\b/.test(text)) return false;
+  if (chainEngine && /\b(timing belt|zupcasti remen|remen razvoda|remen)\b/.test(text)) return false;
 
-  if (platform.includes("diesel") && /\bsvjecic\b|\bsvjećic\b|\bspark plug\b|\bizgaranje benzina\b/.test(haystack)) {
-    return false;
-  }
+  if (looksDiesel && /\b(spark plug|ignition coil|coil pack|svjecica|svjećica|bobina|throttle body)\b/.test(text)) return false;
+  if (looksPetrol && /\b(dpf|diesel particulate|common rail|high-pressure diesel pump|injector pump|adblue|glow plug|grijac|grijač)\b/.test(text)) return false;
 
   return true;
 }
-
-function filterCompatibleScenarios(items: StoredScenario[]): StoredScenario[] {
-  return items.filter((item) => scenarioLooksCompatible(item));
-}
-
 function shuffle<T>(arr: T[]): T[] {
   const copy = [...arr];
   for (let i = copy.length - 1; i > 0; i -= 1) {
@@ -246,7 +241,7 @@ export default async function handler(
     const locale = getLocaleFromReq(req);
 
     const allScenariosRaw = await getScenariosForMode("all", 500);
-    const allScenarios = filterCompatibleScenarios(sortPool(uniqueById(allScenariosRaw)));
+    const allScenarios = sortPool(uniqueById(allScenariosRaw)).filter(isMechanicallyCompatible);
 
     if (!allScenarios.length) {
       return res.status(404).json({

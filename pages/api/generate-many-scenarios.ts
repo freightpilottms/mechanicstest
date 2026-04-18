@@ -61,8 +61,11 @@ STRICT RULES:
 - MUST be realistic
 - MUST NOT be repetitive
 - MUST use context variables
-- Mechanical compatibility is mandatory: do not mention chain issues on belt engines, do not mention belt issues on chain engines, and do not use diesel-only systems on petrol vehicles or petrol-only systems on diesel vehicles
 - NO misleading info
+- The failure MUST be mechanically possible for the exact engine/platform type
+- Never mention timing chain for a timing-belt engine unless that engine truly uses a chain
+- Never mention timing belt for a timing-chain engine unless that engine truly uses a belt
+- Never use diesel-only causes for petrol vehicles, and never use petrol-only causes for diesel vehicles
 - RETURN ONLY JSON
 
 Questions MUST be:
