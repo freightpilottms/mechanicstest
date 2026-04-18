@@ -245,7 +245,7 @@ export default function TestPage() {
   const [answers, setAnswers] = useState<AnswerState[]>([]);
   const [finished, setFinished] = useState(false);
   const [timeLeft, setTimeLeft] = useState(0);
-
+  const [timerReady, setTimerReady] = useState(false);
   useEffect(() => {
     let cancelled = false;
 
@@ -292,20 +292,23 @@ export default function TestPage() {
 
   useEffect(() => {
     if (!currentQuestion || finished) return;
+    setTimerReady(false);
     setTimeLeft(TIME_LIMITS[currentQuestion.difficulty]);
+  
+    const id = window.setTimeout(() => {
+      setTimerReady(true);
+    }, 0);
+  
+    return () => window.clearTimeout(id);
   }, [currentIndex, currentQuestion, finished]);
 
   useEffect(() => {
-    if (!currentQuestion || finished) return;
-    if (timeLeft === 0 && answers.length > 0) {
-      const alreadyStarted = answers[currentIndex]?.timeSpent > 0 || answers[currentIndex]?.answer?.trim();
-      if (alreadyStarted) {
-        saveAndAdvance(true);
-      }
+    if (!currentQuestion || finished || !timerReady) return;
+  
+    if (timeLeft <= 0) {
+      saveAndAdvance(true);
       return;
     }
-  
-    if (timeLeft <= 0) return;
   
     const timer = window.setInterval(() => {
       setTimeLeft((prev) => {
@@ -318,7 +321,7 @@ export default function TestPage() {
     }, 1000);
   
     return () => window.clearInterval(timer);
-  }, [timeLeft, currentQuestion, finished, answers, currentIndex]);
+  }, [timeLeft, currentQuestion, finished, timerReady]);
 
   function updateAnswer(value: string) {
     setAnswers((prev) => {
