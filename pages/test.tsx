@@ -1,13 +1,33 @@
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { useEffect, useMemo, useState } from "react";
-import {
-  DIFFICULTY_LABELS,
-  TIME_LIMITS,
-  type Difficulty,
-  type MockQuestion,
-  getQuestionsForMode,
-} from "@/lib/mock-questions";
+import { DIFFICULTY_LABELS, TIME_LIMITS, type Difficulty } from "@/lib/mock-questions";
+
+type ScenarioQuestion = {
+  id: string;
+  brand: string;
+  platform_type: string;
+  category: string;
+  root_cause_id: string;
+  root_cause_label: string;
+  difficulty: Difficulty;
+  title: string;
+  vehicle: string;
+  symptoms: string[];
+  driving: string[];
+  extra: string[];
+  key_details: string[];
+  questions: string[];
+  hint: string[];
+  answer_main: string;
+  answer_why_no_code: string;
+  answer_proof: string[];
+  accepted_answers: string[];
+  partial_answers: string[];
+  scoring_notes?: Record<string, any>;
+  created_at?: string;
+  times_used?: number;
+};
 
 type AnswerState = {
   answer: string;
@@ -22,7 +42,7 @@ type EvaluatedResult = {
 };
 
 function normalizeText(value: string) {
-  return value
+  return String(value || "")
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -61,27 +81,43 @@ function difficultyBadgeClasses(difficulty: Difficulty) {
   return "border-orange-500/30 bg-orange-500/10 text-orange-300";
 }
 
-function evaluateAnswer(question: MockQuestion, rawAnswer: string, isBs: boolean): EvaluatedResult {
+function getDifficultyText(difficulty: Difficulty, isBs: boolean) {
+  return DIFFICULTY_LABELS[difficulty][isBs ? "bs" : "en"];
+}
+
+function evaluateAnswer(question: ScenarioQuestion, rawAnswer: string, isBs: boolean): EvaluatedResult {
   const answer = normalizeText(rawAnswer);
 
+  const accepted = (question.accepted_answers || []).map(normalizeText);
+  const partial = (question.partial_answers || []).map(normalizeText);
+  const mainAnswer = normalizeText(question.answer_main || "");
+  const whyNoCode = normalizeText(question.answer_why_no_code || "");
+  const proof = (question.answer_proof || []).map(normalizeText);
+
   let mainDirectionScore = 0;
-  if (containsAny(answer, question.scoring.mainDirectionKeywords)) {
+
+  if (containsAny(answer, accepted) || (mainAnswer && answer.includes(mainAnswer))) {
     mainDirectionScore = 7;
-  } else if (containsAny(answer, question.scoring.partialDirectionKeywords)) {
+  } else if (containsAny(answer, partial)) {
     mainDirectionScore = 5.2;
   } else if (answer.length > 10) {
     mainDirectionScore = 2.2;
   }
 
   let precisionScore = 0;
-  if (containsAny(answer, question.scoring.exactComponentKeywords)) {
+  if (question.root_cause_label && answer.includes(normalizeText(question.root_cause_label))) {
     precisionScore = 2;
   } else if (mainDirectionScore >= 5) {
     precisionScore = 1.1;
   }
 
   let reasoningScore = 0;
-  if (containsAny(answer, question.scoring.reasoningKeywords)) {
+  const reasoningKeywords = [
+    ...proof,
+    ...whyNoCode.split(" ").filter((x) => x.length > 4),
+  ];
+
+  if (containsAny(answer, reasoningKeywords)) {
     reasoningScore = 1;
   } else if (answer.length > 80) {
     reasoningScore = 0.5;
@@ -91,40 +127,66 @@ function evaluateAnswer(question: MockQuestion, rawAnswer: string, isBs: boolean
   const rank = isBs ? getRankBs(score) : getRank(score);
 
   const feedback = isBs
-    ? `Ocjena: ${score} / 10 — dobar smjer nosi najviše bodova, precizna komponenta dodaje bonus, a dijagnostička logika zaključava puni rezultat.`
-    : `Score: ${score} / 10 — the main direction carries most of the points, the exact component adds a bonus, and diagnostic logic pushes the result higher.`;
+    ? `Ocjena: ${score} / 10 — glavni smjer nosi najviše bodova, precizan uzrok dodaje bonus, a dobro objašnjenje i način dokazivanja podižu rezultat.`
+    : `Score: ${score} / 10 — the main direction carries most of the points, the exact root cause adds a bonus, and sound reasoning plus proof steps push the result higher.`;
 
   return { score, rank, feedback };
 }
 
-function getDifficultyText(difficulty: Difficulty, isBs: boolean) {
-  return DIFFICULTY_LABELS[difficulty][isBs ? "bs" : "en"];
-}
-
 export default function TestPage() {
   const router = useRouter();
-  const { mode = "all", lang = "en" } = router.query;
+  const { lang = "en" } = router.query;
   const isBs = String(lang) === "bs";
 
-  const questions = useMemo(() => getQuestionsForMode(String(mode)), [mode]);
-
+  const [questions, setQuestions] = useState<ScenarioQuestion[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<AnswerState[]>([]);
   const [finished, setFinished] = useState(false);
   const [timeLeft, setTimeLeft] = useState(0);
 
   useEffect(() => {
-    if (!questions.length) return;
-    setAnswers(
-      questions.map(() => ({
-        answer: "",
-        timedOut: false,
-        timeSpent: 0,
-      }))
-    );
-    setCurrentIndex(0);
-    setFinished(false);
-  }, [questions]);
+    let cancelled = false;
+
+    async function loadTestSet() {
+      try {
+        setLoading(true);
+        setLoadError("");
+
+        const res = await fetch("/api/scenarios/test-set?count=10");
+        const data = await res.json();
+
+        if (!res.ok || !data?.ok || !Array.isArray(data?.scenarios)) {
+          throw new Error(data?.error || "Failed to load test scenarios");
+        }
+
+        if (cancelled) return;
+
+        setQuestions(data.scenarios);
+        setAnswers(
+          data.scenarios.map(() => ({
+            answer: "",
+            timedOut: false,
+            timeSpent: 0,
+          }))
+        );
+        setCurrentIndex(0);
+        setFinished(false);
+      } catch (err: any) {
+        if (cancelled) return;
+        setLoadError(String(err?.message || err || "Unknown error"));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    loadTestSet();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const currentQuestion = questions[currentIndex];
 
@@ -211,6 +273,56 @@ export default function TestPage() {
   const answeredCount = answers.filter((entry) => entry?.answer?.trim().length > 0).length;
   const timedOutCount = answers.filter((entry) => entry?.timedOut).length;
 
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-[#0a0d12] px-4 py-6 text-white">
+        <div className="mx-auto max-w-5xl">
+          <section className="rounded-3xl border border-white/10 bg-white/5 p-8 backdrop-blur">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-orange-400">
+              Mechanic IQ Test
+            </p>
+            <h1 className="mt-3 text-3xl font-black tracking-tight">
+              {isBs ? "Učitavanje testa..." : "Loading test..."}
+            </h1>
+          </section>
+        </div>
+      </main>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <main className="min-h-screen bg-[#0a0d12] px-4 py-6 text-white">
+        <div className="mx-auto max-w-5xl">
+          <section className="rounded-3xl border border-red-500/20 bg-red-500/10 p-8 backdrop-blur">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-red-300">
+              {isBs ? "Greška" : "Error"}
+            </p>
+            <h1 className="mt-3 text-2xl font-black tracking-tight">
+              {isBs ? "Test nije učitan" : "Test failed to load"}
+            </h1>
+            <p className="mt-4 text-sm text-red-100">{loadError}</p>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="rounded-2xl bg-orange-500 px-5 py-3 font-bold text-black transition hover:bg-orange-400"
+              >
+                {isBs ? "Pokušaj ponovo" : "Try Again"}
+              </button>
+              <Link
+                href="/single-player"
+                className="rounded-2xl border border-white/10 bg-black/20 px-5 py-3 font-bold text-zinc-100 transition hover:bg-white/10"
+              >
+                {isBs ? "Nazad" : "Back"}
+              </Link>
+            </div>
+          </section>
+        </div>
+      </main>
+    );
+  }
+
   if (!currentQuestion && !finished) {
     return null;
   }
@@ -258,6 +370,7 @@ export default function TestPage() {
                       <p className="text-xs font-semibold uppercase tracking-[0.22em] text-zinc-500">
                         {isBs ? "Pitanje" : "Question"} {index + 1} • {question.vehicle}
                       </p>
+
                       <h2 className="mt-2 text-2xl font-black tracking-tight">{question.title}</h2>
                     </div>
 
@@ -277,8 +390,9 @@ export default function TestPage() {
                         {isBs ? "Tvoj odgovor" : "Your Answer"}
                       </p>
                       <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-zinc-200">
-                        {answerState.answer?.trim() || (isBs ? "Nema unosa." : "No answer entered.")}
+                        {answerState.answer?.trim() || (isBs ? "Nema odgovora." : "No answer provided.")}
                       </p>
+
                       <div className="mt-4 flex flex-wrap gap-2 text-xs text-zinc-400">
                         <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1">
                           {isBs ? "Utrošeno" : "Spent"}: {formatTime(answerState.timeSpent)}
@@ -309,14 +423,14 @@ export default function TestPage() {
                       <p className="text-sm font-semibold uppercase tracking-[0.2em] text-zinc-500">
                         {isBs ? "Najvjerovatniji uzrok" : "Most Likely Cause"}
                       </p>
-                      <p className="mt-3 text-sm leading-6 text-zinc-200">{question.answers.main}</p>
+                      <p className="mt-3 text-sm leading-6 text-zinc-200">{question.answer_main}</p>
                     </div>
 
                     <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                       <p className="text-sm font-semibold uppercase tracking-[0.2em] text-zinc-500">
                         {isBs ? "Zašto ECU ne baca grešku" : "Why ECU May Not Set a Fault"}
                       </p>
-                      <p className="mt-3 text-sm leading-6 text-zinc-200">{question.answers.whyNoCode}</p>
+                      <p className="mt-3 text-sm leading-6 text-zinc-200">{question.answer_why_no_code}</p>
                     </div>
 
                     <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
@@ -324,7 +438,7 @@ export default function TestPage() {
                         {isBs ? "Kako dokazati" : "How to Prove It"}
                       </p>
                       <ul className="mt-3 space-y-2 text-sm leading-6 text-zinc-200">
-                        {question.answers.proof.map((item, proofIndex) => (
+                        {question.answer_proof.map((item, proofIndex) => (
                           <li key={proofIndex} className="rounded-xl border border-white/8 bg-black/20 px-3 py-2">
                             {item}
                           </li>
@@ -422,7 +536,7 @@ export default function TestPage() {
             </div>
 
             <span className="rounded-full border border-white/10 bg-black/20 px-3 py-2 text-xs font-bold uppercase tracking-[0.2em] text-zinc-300">
-              {currentQuestion.levelLabel}
+              {currentQuestion.category}
             </span>
           </div>
 
@@ -430,7 +544,7 @@ export default function TestPage() {
             <SectionCard title={isBs ? "Simptomi" : "Symptoms"} items={currentQuestion.symptoms} />
             <SectionCard title={isBs ? "U vožnji" : "Driving"} items={currentQuestion.driving} />
             <SectionCard title={isBs ? "Dodatno" : "Additional"} items={currentQuestion.extra} />
-            <SectionCard title={isBs ? "Ključni detalj" : "Key Detail"} items={currentQuestion.keyDetails} />
+            <SectionCard title={isBs ? "Ključni detalji" : "Key Details"} items={currentQuestion.key_details} />
           </div>
 
           <div className="mt-4 grid gap-4 lg:grid-cols-2">
