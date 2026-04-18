@@ -4,9 +4,9 @@ import { callOpenAI } from "@/lib/openai";
 type Verdict = "correct" | "very_close" | "partial" | "weak" | "wrong";
 
 type AiResult = {
-  score: number; // 0-10
-  diagnosis_percent: number; // 0-100
-  bonus: number; // 0-2
+  score: number;
+  diagnosis_percent: number;
+  bonus: number;
   verdict: Verdict;
   matched_cause: string;
   reason_short: string;
@@ -32,10 +32,10 @@ PRAVILA:
 - Ocjena ide od 0 do 10.
 
 KRITERIJI:
-- 9-10: Tačan uzrok (npr. senzor radilice neispravan) + dodatno objašnjenje ili način testiranja
-- 7-8: Vrlo blizu (npr. navodi pravi sistem ili komponentu)
-- 4-6: Djelimično tačno (pogodio dio problema ali ne konkretan uzrok)
-- 1-3: Slabo (nejasno, previše općenito)
+- 9-10: Tačan uzrok + dodatno objašnjenje ili način testiranja
+- 7-8: Vrlo blizu (pravi sistem ili komponenta)
+- 4-6: Djelimično tačno
+- 1-3: Slabo
 - 0: Pogrešno
 
 BONUS:
@@ -64,7 +64,7 @@ RULES:
 SCORING:
 - 9-10: Correct root cause + explanation or testing method
 - 7-8: Very close (correct system/component)
-- 4-6: Partial (some understanding but not exact)
+- 4-6: Partial
 - 1-3: Weak
 - 0: Wrong
 
@@ -132,6 +132,16 @@ function fallbackResult(locale: "bs" | "en", answer: string): AiResult {
   };
 }
 
+function isValidVerdict(value: unknown): value is Verdict {
+  return (
+    value === "correct" ||
+    value === "very_close" ||
+    value === "partial" ||
+    value === "weak" ||
+    value === "wrong"
+  );
+}
+
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
@@ -163,16 +173,21 @@ export default async function handler(
         user,
         temperature: 0.2,
       });
-    } catch (e) {
+    } catch {
       const fb = fallbackResult(locale, userAnswer);
       return res.status(200).json({ ok: true, result: fb });
     }
 
-    let parsed: AiResult | null = null;
+    let parsed: Partial<AiResult> | null = null;
 
     try {
-      parsed = JSON.parse(aiText);
+      parsed = JSON.parse(aiText) as Partial<AiResult>;
     } catch {
+      const fb = fallbackResult(locale, userAnswer);
+      return res.status(200).json({ ok: true, result: fb });
+    }
+
+    if (!parsed) {
       const fb = fallbackResult(locale, userAnswer);
       return res.status(200).json({ ok: true, result: fb });
     }
@@ -181,7 +196,7 @@ export default async function handler(
       score: clamp(Number(parsed.score || 0), 0, 10),
       diagnosis_percent: clamp(Number(parsed.diagnosis_percent || 0), 0, 100),
       bonus: clamp(Number(parsed.bonus || 0), 0, 2),
-      verdict: parsed.verdict || "wrong",
+      verdict: isValidVerdict(parsed.verdict) ? parsed.verdict : "wrong",
       matched_cause: String(parsed.matched_cause || ""),
       reason_short: String(parsed.reason_short || ""),
     };
