@@ -67,29 +67,52 @@ Do NOT punish the user for short answers if the diagnosis is correct or very clo
 
 You must grade the user's answer using this exact philosophy:
 
-SCORING RULES:
-1. Main diagnosis is the most important thing.
+CORE PRINCIPLES:
+1. Main diagnosis is by far the most important thing.
 2. The user does NOT need to fully answer all 3 subquestions to get a high score.
 3. If the user correctly identifies the fault/component/system in mechanic-style language, give a high score.
-4. Accept synonyms, translations, shorthand mechanic wording, and rough but correct phrasing.
-5. "Why ECU may not set a fault" and "How to prove it" are only BONUS, not required for a high diagnosis score.
+4. Accept synonyms, shorthand mechanic wording, rough phrasing, partial translations, and imperfect grammar.
+5. "Why ECU may not set a fault" and "How to prove it" are BONUS only.
+6. Do NOT require exact wording from accepted answers.
+7. Judge meaning, not sentence beauty.
 
-STRICT SCORE MAPPING:
-- 100% diagnosis match => 10 points
-- 75% diagnosis match => 8 points
-- 50% to 60% diagnosis match => 4 points
-- 20% to 40% diagnosis match => 2 points
-- 0% diagnosis match => 0 points
+STRICT SCORING PHILOSOPHY:
+- 10/10 = exact root cause or expert-level equivalent phrasing
+- 8-9/10 = clearly the correct root cause, but less precise wording or missing full failure mode
+- 6-7/10 = very close; correct component/system and strongly pointing to the real root cause
+- 4-5/10 = correct direction only; user is in the right area but diagnosis is still broad/incomplete
+- 2-3/10 = weak answer; some small relevance but mostly not the right diagnosis
+- 0-1/10 = wrong diagnosis
+
+STRICT DIAGNOSIS PERCENT GUIDANCE:
+- 90 to 100 = exact or near-exact diagnosis
+- 75 to 89 = very close diagnosis
+- 50 to 74 = partial but meaningful diagnosis
+- 20 to 49 = weak but somewhat related
+- 0 to 19 = wrong diagnosis
 
 BONUS:
 - Add up to +1 bonus point if the user gives useful supporting explanation, proof/testing steps, or ECU reasoning.
+- Bonus must never hide a bad diagnosis.
 - Final score must still be capped at 10.
 
-HOW TO INTERPRET:
-- If user says the exact root cause in different wording, that can still be 9 or 10.
-- If user names the exact problematic component but not the full failure mode, that can still be 5 to 9 depending on closeness.
-- If user gives a near-equivalent mechanic phrasing, treat it generously.
-- If user gives multiple possible causes, judge the overall answer in the user's favor if one of the main ideas is close/correct.
+HOW TO INTERPRET ANSWERS:
+- If the user says the same fault in different wording, it can still be 9 or 10.
+- If the user names the exact bad component but not the exact failure mode, that can still be strong.
+- If the user gives multiple possible causes, judge generously ONLY if one of the main causes is clearly the correct one and the rest do not destroy the answer.
+- If the user shotgun-lists many random causes, reduce score.
+- If the user only gives a broad area like "fuel issue", "sensor issue", "boost leak area", "EGR problem", score it as partial/weak unless it clearly matches the real root cause closely.
+- Mechanic-style shorthand is acceptable.
+- Bosnian/Serbian/Croatian and English wording can both be treated as valid if the meaning matches.
+
+VERY IMPORTANT:
+You are NOT grading whether the user fully answered:
+1. main diagnosis
+2. why no fault code
+3. how to prove it
+
+You are grading mainly the DIAGNOSIS QUALITY.
+The other two parts only affect BONUS.
 
 You must return ONLY valid JSON with this exact shape:
 {
@@ -107,6 +130,13 @@ Allowed verdict values:
 - "partial"
 - "weak"
 - "wrong"
+
+HOW TO MAP VERDICT:
+- "correct" = score 9 to 10
+- "very_close" = score 7 to 8.9
+- "partial" = score 4 to 6.9
+- "weak" = score 1 to 3.9
+- "wrong" = score 0 to 0.9
 
 SCENARIO:
 ${JSON.stringify({
@@ -140,6 +170,12 @@ ${JSON.stringify(question.answer_proof || [])}
 
 USER ANSWER:
 ${userAnswer}
+
+Before returning JSON, think like an experienced mechanic instructor:
+- Is the user basically right?
+- Is the user very close?
+- Did the user only identify the broad area?
+- Did the user provide proof/testing logic that deserves bonus?
 
 Return JSON only.
 `;
