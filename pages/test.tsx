@@ -73,6 +73,39 @@ function getDifficultyText(difficulty: Difficulty, isBs: boolean) {
   return DIFFICULTY_LABELS[difficulty][isBs ? "bs" : "en"];
 }
 
+
+
+
+
+
+function phraseIncluded(answer: string, phrase: string) {
+  const a = normalizeText(answer);
+  const p = normalizeText(phrase);
+  return !!p && a.includes(p);
+}
+
+
+
+
+function anyTokenMatch(answer: string, keywords: string[]) {
+  const answerTokens = new Set(uniqueTokens(answer));
+  for (const keyword of keywords) {
+    for (const token of uniqueTokens(keyword)) {
+      if (answerTokens.has(token)) return true;
+    }
+  }
+  return false;
+}
+
+function buildReasoningKeywords(question: ScenarioQuestion) {
+  return [
+    ...(question.answer_proof || []),
+    question.answer_why_no_code || "",
+    question.root_cause_label || "",
+    question.answer_main || "",
+  ];
+}
+
 function normalizeText(value: string) {
   return String(value || "")
     .toLowerCase()
@@ -94,143 +127,167 @@ function uniqueTokens(value: string) {
   return Array.from(new Set(tokenize(value)));
 }
 
-function phraseIncluded(answer: string, phrase: string) {
-  const a = normalizeText(answer);
-  const p = normalizeText(phrase);
-  return !!p && a.includes(p);
-}
-
 function overlapRatio(answer: string, target: string) {
-  const answerTokens = new Set(uniqueTokens(answer));
-  const targetTokens = uniqueTokens(target);
-
-  if (!targetTokens.length) return 0;
+  const a = new Set(uniqueTokens(answer));
+  const t = uniqueTokens(target);
+  if (!t.length) return 0;
 
   let hits = 0;
-  for (const token of targetTokens) {
-    if (answerTokens.has(token)) hits += 1;
+  for (const token of t) {
+    if (a.has(token)) hits++;
   }
-
-  return hits / targetTokens.length;
+  return hits / t.length;
 }
 
 function bestOverlap(answer: string, targets: string[]) {
   let best = 0;
+  const normAnswer = normalizeText(answer);
+
   for (const target of targets) {
-    const exact = phraseIncluded(answer, target) ? 1 : 0;
-    const overlap = overlapRatio(answer, target);
-    best = Math.max(best, exact, overlap);
+    const normTarget = normalizeText(target);
+    if (!normTarget) continue;
+
+    if (normAnswer.includes(normTarget)) {
+      best = 1;
+      continue;
+    }
+
+    best = Math.max(best, overlapRatio(normAnswer, normTarget));
   }
+
   return best;
 }
 
-function anyTokenMatch(answer: string, keywords: string[]) {
-  const answerTokens = new Set(uniqueTokens(answer));
-  for (const keyword of keywords) {
-    for (const token of uniqueTokens(keyword)) {
-      if (answerTokens.has(token)) return true;
-    }
-  }
-  return false;
+function splitIdeas(raw: string) {
+  return String(raw || "")
+    .split(/\n|;|,|\.\s+|\sili\s+|\si\s+|\splus\s+|\/+/gi)
+    .map((x) => x.trim())
+    .filter((x) => x.length > 2)
+    .slice(0, 6);
 }
 
-function buildReasoningKeywords(question: ScenarioQuestion) {
-  return [
-    ...(question.answer_proof || []),
-    question.answer_why_no_code || "",
-    question.root_cause_label || "",
-    question.answer_main || "",
+function closenessPercent(answer: string, accepted: string[], partial: string[]) {
+  const acceptedHit = bestOverlap(answer, accepted);
+  const partialHit = bestOverlap(answer, partial);
+
+  const best = Math.max(acceptedHit, partialHit);
+
+  if (best >= 1) return 100;
+  if (best >= 0.75) return 75;
+  if (best >= 0.6) return 60;
+  if (best >= 0.5) return 50;
+  if (best >= 0.4) return 40;
+  if (best >= 0.2) return 20;
+  return 0;
+}
+
+function percentToPoints(percent: number) {
+  if (percent >= 100) return 10;
+  if (percent >= 75) return 8;
+  if (percent >= 60) return 4;
+  if (percent >= 50) return 4;
+  if (percent >= 40) return 2;
+  if (percent >= 20) return 2;
+  return 0;
+}
+
+function reasoningBonus(answer: string, question: ScenarioQuestion) {
+  const normAnswer = normalizeText(answer);
+  if (!normAnswer) return 0;
+
+  const keywords = [
+    "ecu","dijagnostika","live data","manometar","osciloskop",
+    "smoke test","maf","map","boost","vakum","dpf","egr",
+    "senzor","pritisak","regeneracija","provjeriti",
+    "izmjeriti","test","dokazati"
   ];
+
+  let hits = 0;
+  for (const word of keywords) {
+    if (normAnswer.includes(word)) hits++;
+  }
+
+  const whyOverlap = overlapRatio(normAnswer, question.answer_why_no_code || "");
+  const proofOverlap = overlapRatio(
+    normAnswer,
+    (question.answer_proof || []).join(" ")
+  );
+
+  if (hits >= 2 || whyOverlap >= 0.18 || proofOverlap >= 0.12) {
+    return 1;
+  }
+
+  return 0;
 }
 
-function evaluateAnswer(question: ScenarioQuestion, rawAnswer: string, isBs: boolean): EvaluatedResult {
-  const answer = normalizeText(rawAnswer || "");
+function evaluateAnswer(
+  question: ScenarioQuestion,
+  rawAnswer: string,
+  isBs: boolean
+): EvaluatedResult {
+  const answer = String(rawAnswer || "").trim();
 
-  if (!answer.trim()) {
+  if (!answer) {
     return {
       score: 0,
-      rank: isBs ? "Beginner" : "Beginner",
+      rank: isBs ? getRankBs(0) : getRank(0),
       feedback: isBs
         ? "Ocjena: 0 / 10 — nema unesenog odgovora."
         : "Score: 0 / 10 — no answer provided.",
     };
   }
 
-  const acceptedTargets = [
+  const accepted = [
     question.answer_main || "",
     question.root_cause_label || "",
     ...(question.accepted_answers || []),
   ].filter(Boolean);
 
-  const partialTargets = [
-    ...(question.partial_answers || []),
-  ].filter(Boolean);
+  const partial = [...(question.partial_answers || [])].filter(Boolean);
 
-  const acceptedScore = bestOverlap(answer, acceptedTargets);
-  const partialScore = bestOverlap(answer, partialTargets);
+  const ideas = splitIdeas(answer);
 
-  let directionScore = 0;
+  let baseScore = 0;
 
-  if (acceptedScore >= 1) {
-    directionScore = 7.5;
-  } else if (acceptedScore >= 0.8) {
-    directionScore = 7;
-  } else if (acceptedScore >= 0.6) {
-    directionScore = 6.2;
-  } else if (acceptedScore >= 0.45) {
-    directionScore = 5.3;
-  } else if (partialScore >= 0.7) {
-    directionScore = 4.8;
-  } else if (partialScore >= 0.45) {
-    directionScore = 3.8;
+  if (ideas.length <= 1) {
+    const percent = closenessPercent(answer, accepted, partial);
+    baseScore = percentToPoints(percent);
   } else {
-    directionScore = 1.5;
+    const percents = ideas.map((idea) =>
+      closenessPercent(idea, accepted, partial)
+    );
+
+    const meaningful = percents.filter((x) => x > 0);
+
+    if (!meaningful.length) {
+      baseScore = 0;
+    } else {
+      const avg =
+        meaningful.reduce((sum, v) => sum + v, 0) / meaningful.length;
+
+      if (avg >= 75) baseScore = 8;
+      else if (avg >= 60) baseScore = 4;
+      else if (avg >= 50) baseScore = 4;
+      else if (avg >= 40) baseScore = 2;
+      else if (avg >= 20) baseScore = 2;
+      else baseScore = 0;
+    }
   }
 
-  let precisionScore = 0;
+  const bonus = reasoningBonus(answer, question);
+  const total = Math.min(10, Number((baseScore + bonus).toFixed(1)));
 
-  const rootCauseTokens = uniqueTokens(question.root_cause_label || "");
-  const answerTokens = new Set(uniqueTokens(answer));
-
-  let rootHits = 0;
-  for (const token of rootCauseTokens) {
-    if (answerTokens.has(token)) rootHits += 1;
-  }
-
-  const rootRatio = rootCauseTokens.length ? rootHits / rootCauseTokens.length : 0;
-
-  if (rootRatio >= 0.8) {
-    precisionScore = 1.6;
-  } else if (rootRatio >= 0.5) {
-    precisionScore = 1.1;
-  } else if (rootRatio >= 0.3) {
-    precisionScore = 0.6;
-  }
-
-  let reasoningScore = 0;
-
-  const reasoningKeywords = buildReasoningKeywords(question);
-  const answerLength = uniqueTokens(answer).length;
-
-  if (anyTokenMatch(answer, reasoningKeywords) && answerLength >= 8) {
-    reasoningScore = 0.9;
-  } else if (answerLength >= 12) {
-    reasoningScore = 0.5;
-  } else if (answerLength >= 5) {
-    reasoningScore = 0.2;
-  }
-
-  let score = directionScore + precisionScore + reasoningScore;
-
-  score = Math.min(10, Number(score.toFixed(1)));
-
-  const rank = isBs ? getRankBs(score) : getRank(score);
+  const rank = isBs ? getRankBs(total) : getRank(total);
 
   const feedback = isBs
-    ? `Ocjena: ${score} / 10 — sistem sada prepoznaje i približno tačne odgovore, ne samo potpuno identične formulacije.`
-    : `Score: ${score} / 10 — the system now recognizes close answers, not only nearly identical phrasing.`;
+    ? `Ocjena: ${total} / 10 — fokus je na dijagnozi, ne pisanju.`
+    : `Score: ${total} / 10 — focus is on diagnosis, not writing.`;
 
-  return { score, rank, feedback };
+  return {
+    score: total,
+    rank,
+    feedback,
+  };
 }
 
 export default function TestPage() {
