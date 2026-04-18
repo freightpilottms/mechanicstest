@@ -10,19 +10,39 @@ export function getOpenAI() {
   return new OpenAI({ apiKey });
 }
 
-// ✅ DODANO — ovo je falilo
-export async function callOpenAI(prompt: string) {
+type CallOpenAIParams = {
+  system?: string;
+  user: string;
+  temperature?: number;
+  model?: string;
+};
+
+export async function callOpenAI({
+  system,
+  user,
+  temperature = 0.2,
+  model = "gpt-4o-mini",
+}: CallOpenAIParams): Promise<string> {
   const openai = getOpenAI();
 
+  const messages: Array<{ role: "system" | "user"; content: string }> = [];
+
+  if (system?.trim()) {
+    messages.push({
+      role: "system",
+      content: system.trim(),
+    });
+  }
+
+  messages.push({
+    role: "user",
+    content: user,
+  });
+
   const response = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    temperature: 0.2,
-    messages: [
-      {
-        role: "user",
-        content: prompt,
-      },
-    ],
+    model,
+    temperature,
+    messages,
   });
 
   return response.choices?.[0]?.message?.content || "";
