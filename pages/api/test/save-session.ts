@@ -1,19 +1,8 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { saveCompletedTestSession } from "@/lib/scenario-storage";
-
-type IncomingItem = {
-  scenario_id: string;
-  position: number;
-  user_answer: string;
-  time_spent_seconds?: number;
-  timed_out?: boolean;
-  ai_score?: number;
-  ai_bonus?: number;
-  ai_diagnosis_percent?: number;
-  ai_verdict?: string;
-  ai_feedback?: string;
-  matched_cause?: string;
-};
+import {
+  saveCompletedTestSession,
+  type NewTestSessionItemPayload,
+} from "@/lib/scenario-storage";
 
 function normalizeLocale(value: unknown): "bs" | "en" {
   const v = String(value || "").trim().toLowerCase();
@@ -62,7 +51,7 @@ export default async function handler(
       });
     }
 
-    const cleanItems: IncomingItem[] = items
+    const cleanItems: NewTestSessionItemPayload[] = items
       .map((item: any, index: number) => ({
         scenario_id: String(item?.scenario_id || "").trim(),
         position: Number(item?.position ?? index + 1),
@@ -103,19 +92,7 @@ export default async function handler(
       locale: normalizedLocale,
       average_score: Number(average_score || 0),
       final_rank: String(final_rank || ""),
-      items: cleanItems.map((item) => ({
-        scenario_id: item.scenario_id,
-        position: item.position,
-        user_answer: item.user_answer,
-        time_spent_seconds: item.time_spent_seconds,
-        timed_out: item.timed_out,
-        ai_score: item.ai_score,
-        ai_bonus: item.ai_bonus,
-        ai_diagnosis_percent: item.ai_diagnosis_percent,
-        ai_verdict: item.ai_verdict,
-        ai_feedback: item.ai_feedback,
-        matched_cause: item.matched_cause,
-      })),
+      items: cleanItems,
       session_type: "single",
     });
 

@@ -44,8 +44,7 @@ export type TestSessionPayload = {
   finished_at?: string | null;
 };
 
-export type TestSessionItemPayload = {
-  test_session_id: string;
+export type NewTestSessionItemPayload = {
   scenario_id: string;
   position: number;
   user_answer: string;
@@ -57,6 +56,10 @@ export type TestSessionItemPayload = {
   ai_verdict?: string;
   ai_feedback?: string;
   matched_cause?: string;
+};
+
+export type TestSessionItemPayload = NewTestSessionItemPayload & {
+  test_session_id: string;
 };
 
 function normalizeMode(mode: string) {
@@ -343,7 +346,7 @@ export async function saveCompletedTestSession(params: {
   locale: string;
   average_score: number;
   final_rank: string;
-  items: TestSessionItemPayload[];
+  items: NewTestSessionItemPayload[];
   session_type?: "single" | "multiplayer";
 }) {
   const session = await createTestSession({
@@ -359,7 +362,7 @@ export async function saveCompletedTestSession(params: {
     finished_at: new Date().toISOString(),
   });
 
-  const items = params.items.map((item) => ({
+  const items: TestSessionItemPayload[] = params.items.map((item) => ({
     ...item,
     test_session_id: session.id,
   }));
