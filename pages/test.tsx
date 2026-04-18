@@ -297,17 +297,28 @@ export default function TestPage() {
 
   useEffect(() => {
     if (!currentQuestion || finished) return;
-    if (timeLeft <= 0) {
-      saveAndAdvance(true);
+    if (timeLeft === 0 && answers.length > 0) {
+      const alreadyStarted = answers[currentIndex]?.timeSpent > 0 || answers[currentIndex]?.answer?.trim();
+      if (alreadyStarted) {
+        saveAndAdvance(true);
+      }
       return;
     }
-
+  
+    if (timeLeft <= 0) return;
+  
     const timer = window.setInterval(() => {
-      setTimeLeft((prev) => prev - 1);
+      setTimeLeft((prev) => {
+        if (prev <= 1) {
+          window.clearInterval(timer);
+          return 0;
+        }
+        return prev - 1;
+      });
     }, 1000);
-
+  
     return () => window.clearInterval(timer);
-  }, [timeLeft, currentQuestion, finished]);
+  }, [timeLeft, currentQuestion, finished, answers, currentIndex]);
 
   function updateAnswer(value: string) {
     setAnswers((prev) => {
