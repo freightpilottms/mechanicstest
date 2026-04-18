@@ -1,6 +1,13 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { getScenariosForMode } from "../../../lib/scenario-storage";
 
+type SupportedLocale = "en" | "bs";
+
+function getLocaleFromReq(req: NextApiRequest): SupportedLocale {
+  const raw = String(req.query.locale || req.query.lang || "en").toLowerCase();
+  return raw === "bs" ? "bs" : "en";
+}
+
 type Difficulty = "easy" | "medium" | "hard";
 
 type StoredScenario = {
@@ -11,6 +18,8 @@ type StoredScenario = {
   root_cause_id?: string;
   times_used?: number;
   created_at?: string;
+  locale?: string;
+  language?: string;
   [key: string]: any;
 };
 
@@ -43,6 +52,18 @@ function sortPool(items: StoredScenario[]): StoredScenario[] {
     const bCreated = String(b.created_at || "");
     return bCreated.localeCompare(aCreated);
   });
+}
+
+function normalizeScenarioLocale(item: StoredScenario): SupportedLocale {
+  const raw = String(item.locale || item.language || "en").toLowerCase();
+  return raw === "bs" ? "bs" : "en";
+}
+
+function filterByLocale(
+  items: StoredScenario[],
+  locale: SupportedLocale
+): StoredScenario[] {
+  return items.filter((item) => normalizeScenarioLocale(item) === locale);
 }
 
 function pickBestCandidate(
@@ -113,6 +134,57 @@ function buildTargetDistribution(count: number) {
   return { easy: 3, medium: 4, hard: 3 };
 }
 
+function buildTestSet(
+  allScenarios: StoredScenario[],
+  count: number
+): StoredScenario[] {
+  const easyPool = allScenarios.filter((x) => x.difficulty === "easy");
+  const mediumPool = allScenarios.filter((x) => x.difficulty === "medium");
+  const hardPool = allScenarios.filter((x) => x.difficulty === "hard");
+
+  const target = buildTargetDistribution(count);
+
+  const selected: StoredScenario[] = [];
+  const usedIds = new Set<string>();
+  const usedVehicles = new Set<string>();
+  const usedRootCauses = new Set<string>();
+
+  for (let i = 0; i < target.easy; i += 1) {
+    const picked = pickBestCandidate(easyPool, usedIds, usedVehicles, usedRootCauses);
+    addScenario(selected, picked, usedIds, usedVehicles, usedRootCauses);
+  }
+
+  for (let i = 0; i < target.medium; i += 1) {
+    const picked = pickBestCandidate(mediumPool, usedIds, usedVehicles, usedRootCauses);
+    addScenario(selected, picked, usedIds, usedVehicles, usedRootCauses);
+  }
+
+  for (let i = 0; i < target.hard; i += 1) {
+    const picked = pickBestCandidate(hardPool, usedIds, usedVehicles, usedRootCauses);
+    addScenario(selected, picked, usedIds, usedVehicles, usedRootCauses);
+  }
+
+  if (selected.length < count) {
+    const remainingPool = allScenarios.filter(
+      (item) => item?.id && !usedIds.has(String(item.id))
+    );
+
+    while (selected.length < count && remainingPool.length) {
+      const picked = pickBestCandidate(
+        remainingPool,
+        usedIds,
+        usedVehicles,
+        usedRootCauses
+      );
+
+      if (!picked) break;
+      addScenario(selected, picked, usedIds, usedVehicles, usedRootCauses);
+    }
+  }
+
+  return selected;
+}
+
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
@@ -124,6 +196,7 @@ export default async function handler(
   try {
     const rawCount = Number(req.query.count || 10);
     const count = Math.max(1, Math.min(20, Number.isFinite(rawCount) ? rawCount : 10));
+    const locale = getLocaleFromReq(req);
 
     const allScenariosRaw = await getScenariosForMode("all", 500);
     const allScenarios = sortPool(uniqueById(allScenariosRaw));
@@ -135,48 +208,15 @@ export default async function handler(
       });
     }
 
-    const easyPool = allScenarios.filter((x) => x.difficulty === "easy");
-    const mediumPool = allScenarios.filter((x) => x.difficulty === "medium");
-    const hardPool = allScenarios.filter((x) => x.difficulty === "hard");
+    const localePool = filterByLocale(allScenarios, locale);
 
-    const target = buildTargetDistribution(count);
+    let selected = buildTestSet(localePool, count);
+    let usedLocale = locale;
 
-    const selected: StoredScenario[] = [];
-    const usedIds = new Set<string>();
-    const usedVehicles = new Set<string>();
-    const usedRootCauses = new Set<string>();
-
-    for (let i = 0; i < target.easy; i += 1) {
-      const picked = pickBestCandidate(easyPool, usedIds, usedVehicles, usedRootCauses);
-      addScenario(selected, picked, usedIds, usedVehicles, usedRootCauses);
-    }
-
-    for (let i = 0; i < target.medium; i += 1) {
-      const picked = pickBestCandidate(mediumPool, usedIds, usedVehicles, usedRootCauses);
-      addScenario(selected, picked, usedIds, usedVehicles, usedRootCauses);
-    }
-
-    for (let i = 0; i < target.hard; i += 1) {
-      const picked = pickBestCandidate(hardPool, usedIds, usedVehicles, usedRootCauses);
-      addScenario(selected, picked, usedIds, usedVehicles, usedRootCauses);
-    }
-
-    if (selected.length < count) {
-      const remainingPool = allScenarios.filter(
-        (item) => item?.id && !usedIds.has(String(item.id))
-      );
-
-      while (selected.length < count && remainingPool.length) {
-        const picked = pickBestCandidate(
-          remainingPool,
-          usedIds,
-          usedVehicles,
-          usedRootCauses
-        );
-
-        if (!picked) break;
-        addScenario(selected, picked, usedIds, usedVehicles, usedRootCauses);
-      }
+    if (selected.length < count && locale !== "en") {
+      const englishPool = filterByLocale(allScenarios, "en");
+      selected = buildTestSet(englishPool, count);
+      usedLocale = "en";
     }
 
     if (!selected.length) {
@@ -209,6 +249,8 @@ export default async function handler(
         difficultyBreakdown,
         uniqueVehicles,
         uniqueRootCauses,
+        requestedLocale: locale,
+        usedLocale,
       },
     });
   } catch (e: any) {

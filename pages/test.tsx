@@ -127,7 +127,8 @@ export default function TestPage() {
         setLoading(true);
         setLoadError("");
 
-        const res = await fetch("/api/scenarios/test-set?count=10");
+        const locale = String(lang || "en");
+const res = await fetch(`/api/scenarios/test-set?count=10&locale=${encodeURIComponent(locale)}`);
         const data = await res.json();
 
         if (!res.ok || !data?.ok || !Array.isArray(data?.scenarios)) {
@@ -160,7 +161,7 @@ export default function TestPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [lang]);
 
   const currentQuestion = questions[currentIndex];
 

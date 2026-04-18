@@ -4,6 +4,8 @@ export type StoredScenario = {
   id?: string;
   created_at?: string;
   times_used?: number;
+  locale?: string;
+  language?: string;
 
   brand: string;
   platform_type: string;
@@ -35,6 +37,8 @@ export async function insertScenario(scenario: StoredScenario) {
     .from("scenarios")
     .insert({
       ...scenario,
+      locale: scenario.locale || scenario.language || "en",
+      language: scenario.language || scenario.locale || "en",
       symptoms: scenario.symptoms,
       driving: scenario.driving,
       extra: scenario.extra,
@@ -107,16 +111,23 @@ export async function getLatestScenario() {
 
 export async function getScenariosForMode(
   mode: "all" = "all",
-  limit = 10
+  limit = 10,
+  locale?: string
 ) {
   const supabase = getSupabaseAdmin();
 
-  const { data, error } = await supabase
+  let query = supabase
     .from("scenarios")
     .select("*")
     .order("times_used", { ascending: true })
     .order("created_at", { ascending: false })
     .limit(limit);
+
+  if (locale) {
+    query = query.eq("locale", locale);
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     throw new Error(error.message);

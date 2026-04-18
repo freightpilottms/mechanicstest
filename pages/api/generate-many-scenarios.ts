@@ -10,6 +10,8 @@ import {
   type ScenarioSeed,
 } from "../../lib/scenario-seeds";
 
+type SupportedLocale = "en" | "bs";
+
 type AIResponse = {
   brand: string;
   platform_type: string;
@@ -32,6 +34,11 @@ type AIResponse = {
   partial_answers: string[];
   scoring_notes: Record<string, any>;
 };
+
+function getLocaleFromReq(req: NextApiRequest): SupportedLocale {
+  const raw = String(req.query.locale || req.query.lang || req.body?.locale || req.body?.lang || "en").toLowerCase();
+  return raw === "bs" ? "bs" : "en";
+}
 
 function validateScenario(data: any): data is AIResponse {
   return (
@@ -59,9 +66,29 @@ function validateScenario(data: any): data is AIResponse {
   );
 }
 
-function buildPrompt(seed: ScenarioSeed) {
+function buildPrompt(seed: ScenarioSeed, locale: SupportedLocale) {
+  const languageInstruction =
+    locale === "bs"
+      ? "Generate ONE realistic automotive diagnostic scenario in BOSNIAN/SERBIAN/CROATIAN language."
+      : "Generate ONE realistic automotive diagnostic scenario in ENGLISH language.";
+
+  const question1 =
+    locale === "bs"
+      ? "Najvjerovatniji uzrok (1 konkretna stvar)"
+      : "Most likely cause (1 specific thing)";
+
+  const question2 =
+    locale === "bs"
+      ? "Zašto ECU ne baca grešku"
+      : "Why the ECU does not set a fault code";
+
+  const question3 =
+    locale === "bs"
+      ? "Kako bi to dokazao u praksi"
+      : "How would you prove it in practice";
+
   return `
-Generate ONE realistic automotive diagnostic scenario in BOSNIAN/SERBIAN/CROATIAN language.
+${languageInstruction}
 
 YOU MUST USE THESE FIXED INPUTS:
 - brand: ${seed.brand}
@@ -80,9 +107,9 @@ STRICT RULES:
 - Do not include markdown
 - Create realistic but different symptoms/context/proof steps
 - Questions must be exactly:
-  1. Najvjerovatniji uzrok (1 konkretna stvar)
-  2. Zašto ECU ne baca grešku
-  3. Kako bi to dokazao u praksi
+  1. ${question1}
+  2. ${question2}
+  3. ${question3}
 
 JSON structure:
 {
@@ -99,9 +126,9 @@ JSON structure:
   "extra": ["..."],
   "key_details": ["..."],
   "questions": [
-    "Najvjerovatniji uzrok (1 konkretna stvar)",
-    "Zašto ECU ne baca grešku",
-    "Kako bi to dokazao u praksi"
+    "${question1}",
+    "${question2}",
+    "${question3}"
   ],
   "hint": ["..."],
   "answer_main": "...",
@@ -118,13 +145,13 @@ JSON structure:
 `;
 }
 
-async function generateFromSeed(seed: ScenarioSeed) {
+async function generateFromSeed(seed: ScenarioSeed, locale: SupportedLocale) {
   const openai = getOpenAI();
   const model = process.env.OPENAI_SCENARIO_MODEL || "gpt-5-mini";
 
   const response = await openai.responses.create({
     model,
-    input: buildPrompt(seed),
+    input: buildPrompt(seed, locale),
   });
 
   const text = response.output_text;
@@ -151,6 +178,7 @@ export default async function handler(
       1,
       Math.min(20, Number.isFinite(rawCount) ? rawCount : 10)
     );
+    const locale = getLocaleFromReq(req);
 
     const seeds = getRandomScenarioSeeds(count);
 
@@ -160,7 +188,7 @@ export default async function handler(
 
     for (const seed of seeds) {
       try {
-        const parsed = await generateFromSeed(seed);
+        const parsed = await generateFromSeed(seed, locale);
 
         const signature = makeScenarioSignature({
           brand: parsed.brand,
@@ -168,6 +196,7 @@ export default async function handler(
           rootCauseId: parsed.root_cause_id,
           difficulty: parsed.difficulty,
           title: parsed.title,
+          locale,
         });
 
         const alreadyExists = await findScenarioBySignature(signature);
@@ -183,6 +212,8 @@ export default async function handler(
 
         const inserted = await insertScenario({
           ...parsed,
+          locale,
+          language: locale,
           signature,
         });
 
@@ -202,6 +233,7 @@ export default async function handler(
     return res.status(200).json({
       ok: true,
       requested: count,
+      locale,
       createdCount: created.length,
       existingCount: existing.length,
       failedCount: failed.length,
