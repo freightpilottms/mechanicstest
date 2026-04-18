@@ -352,8 +352,8 @@ export default function TestPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-[#0a0d12] px-2 py-4 text-white sm:px-3 sm:py-6 lg:px-6">
-        <div className="mx-auto w-full max-w-full lg:max-w-6xl">
+      <main className="min-h-screen bg-[#0a0d12] px-1 py-4 text-white sm:px-2 sm:py-6 lg:px-6">
+        <div className="mx-auto w-full max-w-[100vw] px-1 sm:px-2 lg:max-w-6xl lg:px-0">
           <section className="rounded-3xl border border-white/10 bg-white/5 p-8 backdrop-blur">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-orange-400">
               Mechanic IQ Test
@@ -369,8 +369,8 @@ export default function TestPage() {
 
   if (loadError) {
     return (
-      <main className="min-h-screen bg-[#0a0d12] px-2 py-4 text-white sm:px-3 sm:py-6 lg:px-6">
-        <div className="mx-auto w-full max-w-full lg:max-w-6xl">
+      <main className="min-h-screen bg-[#0a0d12] px-1 py-4 text-white sm:px-2 sm:py-6 lg:px-6">
+        <div className="mx-auto w-full max-w-[100vw] px-1 sm:px-2 lg:max-w-6xl lg:px-0">
           <section className="rounded-3xl border border-red-500/20 bg-red-500/10 p-8 backdrop-blur">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-red-300">
               {isBs ? "Greška" : "Error"}
@@ -406,8 +406,8 @@ export default function TestPage() {
 
   if (finished) {
     return (
-      <main className="min-h-screen bg-[#0a0d12] px-2 py-4 text-white sm:px-3 sm:py-6 lg:px-6">
-        <div className="mx-auto w-full max-w-full lg:max-w-6xl">
+      <main className="min-h-screen bg-[#0a0d12] px-1 py-4 text-white sm:px-2 sm:py-6 lg:px-6">
+        <div className="mx-auto w-full max-w-[100vw] px-1 sm:px-2 lg:max-w-6xl lg:px-0">
           <section className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur sm:p-8">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-orange-400">
               {isBs ? "Rezultati testa" : "Test Results"}
@@ -576,7 +576,7 @@ export default function TestPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#0a0d12] px-2 py-4 text-white sm:px-3 sm:py-6 lg:px-6">
+    <main className="min-h-screen bg-[#0a0d12] px-1 py-4 text-white sm:px-2 sm:py-6 lg:px-6">
       {showFloatingTimer ? (
         <div className="fixed right-3 top-3 z-40 rounded-2xl border border-white/10 bg-[#0f141b]/95 px-3 py-3 shadow-2xl backdrop-blur lg:hidden">
           <div className="flex items-center gap-3">
@@ -606,8 +606,8 @@ export default function TestPage() {
         </div>
       ) : null}
 
-      <div className="mx-auto w-full max-w-full lg:max-w-6xl">
-        <section className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur sm:p-8">
+      <div className="mx-auto w-full max-w-[100vw] px-1 sm:px-2 lg:max-w-6xl lg:px-0">
+        <section className="rounded-3xl border border-white/10 bg-white/5 p-5 backdrop-blur sm:p-8">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-orange-400">
@@ -642,14 +642,14 @@ export default function TestPage() {
           </div>
 
           <div className="mt-6 grid gap-4 lg:grid-cols-[1.45fr_0.85fr] xl:gap-5">
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-4 sm:p-5">
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-3 sm:p-5">
               <p className="text-sm font-semibold uppercase tracking-[0.2em] text-zinc-500">
                 {isBs ? "Simptomi" : "Symptoms"}
               </p>
 
               <ul className="mt-4 space-y-3 text-sm leading-6 text-zinc-200">
                 {currentQuestion?.symptoms.map((item, index) => (
-                  <li key={index} className="rounded-xl border border-white/8 bg-white/5 px-4 py-3">
+                  <li key={index} className="rounded-xl border border-white/8 bg-white/5 px-3 py-3 sm:px-4">
                     {item}
                   </li>
                 ))}
@@ -680,7 +680,7 @@ export default function TestPage() {
               </div>
 
               {currentQuestion?.hint?.length ? (
-                <div className="mt-5 rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 py-4">
+                <div className="mt-5 rounded-2xl border border-orange-500/20 bg-orange-500/10 px-3 py-4 sm:px-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-orange-300">
                     {isBs ? "Hint" : "Hint"}
                   </p>
@@ -693,7 +693,7 @@ export default function TestPage() {
               ) : null}
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-4 sm:p-5 lg:sticky lg:top-6 lg:self-start">
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-3 sm:p-5 lg:sticky lg:top-6 lg:self-start">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-semibold uppercase tracking-[0.2em] text-zinc-500">
                   {isBs ? "Vrijeme" : "Time"}
@@ -721,7 +721,7 @@ export default function TestPage() {
               </div>
 
               <div className="mt-6 space-y-4">
-                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4">
+                <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-4 sm:px-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">
                     {isBs ? "Zadatak" : "Task"}
                   </p>
@@ -730,7 +730,7 @@ export default function TestPage() {
                   </p>
                 </div>
 
-                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4">
+                <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-4 sm:px-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">
                     {isBs ? "Bodovanje" : "Scoring"}
                   </p>
@@ -741,7 +741,7 @@ export default function TestPage() {
                   </p>
                 </div>
 
-                <div className="rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 py-4">
+                <div className="rounded-2xl border border-orange-500/20 bg-orange-500/10 px-3 py-4 sm:px-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-orange-300">
                     BONUS
                   </p>
@@ -761,7 +761,7 @@ export default function TestPage() {
                   value={currentAnswer}
                   onChange={(e) => updateAnswer(e.target.value)}
                   rows={10}
-                  className="mt-3 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm leading-6 text-zinc-100 outline-none transition placeholder:text-zinc-500 focus:border-orange-500/40 focus:bg-white/10"
+                  className="mt-3 w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-4 text-sm leading-6 text-zinc-100 outline-none transition placeholder:text-zinc-500 focus:border-orange-500/40 focus:bg-white/10 sm:px-4"
                   placeholder={
                     isBs
                       ? "Upiši dijagnozu, zašto nema greške i kako bi dokazao kvar..."
