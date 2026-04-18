@@ -41,19 +41,7 @@ type EvaluatedResult = {
   feedback: string;
 };
 
-function normalizeText(value: string) {
-  return String(value || "")
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
 
-function containsAny(text: string, keywords: string[]) {
-  return keywords.some((keyword) => text.includes(normalizeText(keyword)));
-}
 
 function formatTime(totalSeconds: number) {
   const minutes = Math.floor(totalSeconds / 60);
@@ -85,50 +73,162 @@ function getDifficultyText(difficulty: Difficulty, isBs: boolean) {
   return DIFFICULTY_LABELS[difficulty][isBs ? "bs" : "en"];
 }
 
+function normalizeText(value: string) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function tokenize(value: string) {
+  return normalizeText(value)
+    .split(" ")
+    .map((x) => x.trim())
+    .filter((x) => x.length > 1);
+}
+
+function uniqueTokens(value: string) {
+  return Array.from(new Set(tokenize(value)));
+}
+
+function phraseIncluded(answer: string, phrase: string) {
+  const a = normalizeText(answer);
+  const p = normalizeText(phrase);
+  return !!p && a.includes(p);
+}
+
+function overlapRatio(answer: string, target: string) {
+  const answerTokens = new Set(uniqueTokens(answer));
+  const targetTokens = uniqueTokens(target);
+
+  if (!targetTokens.length) return 0;
+
+  let hits = 0;
+  for (const token of targetTokens) {
+    if (answerTokens.has(token)) hits += 1;
+  }
+
+  return hits / targetTokens.length;
+}
+
+function bestOverlap(answer: string, targets: string[]) {
+  let best = 0;
+  for (const target of targets) {
+    const exact = phraseIncluded(answer, target) ? 1 : 0;
+    const overlap = overlapRatio(answer, target);
+    best = Math.max(best, exact, overlap);
+  }
+  return best;
+}
+
+function anyTokenMatch(answer: string, keywords: string[]) {
+  const answerTokens = new Set(uniqueTokens(answer));
+  for (const keyword of keywords) {
+    for (const token of uniqueTokens(keyword)) {
+      if (answerTokens.has(token)) return true;
+    }
+  }
+  return false;
+}
+
+function buildReasoningKeywords(question: ScenarioQuestion) {
+  return [
+    ...(question.answer_proof || []),
+    question.answer_why_no_code || "",
+    question.root_cause_label || "",
+    question.answer_main || "",
+  ];
+}
+
 function evaluateAnswer(question: ScenarioQuestion, rawAnswer: string, isBs: boolean): EvaluatedResult {
-  const answer = normalizeText(rawAnswer);
+  const answer = normalizeText(rawAnswer || "");
 
-  const accepted = (question.accepted_answers || []).map(normalizeText);
-  const partial = (question.partial_answers || []).map(normalizeText);
-  const mainAnswer = normalizeText(question.answer_main || "");
-  const whyNoCode = normalizeText(question.answer_why_no_code || "");
-  const proof = (question.answer_proof || []).map(normalizeText);
+  if (!answer.trim()) {
+    return {
+      score: 0,
+      rank: isBs ? "Beginner" : "Beginner",
+      feedback: isBs
+        ? "Ocjena: 0 / 10 — nema unesenog odgovora."
+        : "Score: 0 / 10 — no answer provided.",
+    };
+  }
 
-  let mainDirectionScore = 0;
+  const acceptedTargets = [
+    question.answer_main || "",
+    question.root_cause_label || "",
+    ...(question.accepted_answers || []),
+  ].filter(Boolean);
 
-  if (containsAny(answer, accepted) || (mainAnswer && answer.includes(mainAnswer))) {
-    mainDirectionScore = 7;
-  } else if (containsAny(answer, partial)) {
-    mainDirectionScore = 5.2;
-  } else if (answer.length > 10) {
-    mainDirectionScore = 2.2;
+  const partialTargets = [
+    ...(question.partial_answers || []),
+  ].filter(Boolean);
+
+  const acceptedScore = bestOverlap(answer, acceptedTargets);
+  const partialScore = bestOverlap(answer, partialTargets);
+
+  let directionScore = 0;
+
+  if (acceptedScore >= 1) {
+    directionScore = 7.5;
+  } else if (acceptedScore >= 0.8) {
+    directionScore = 7;
+  } else if (acceptedScore >= 0.6) {
+    directionScore = 6.2;
+  } else if (acceptedScore >= 0.45) {
+    directionScore = 5.3;
+  } else if (partialScore >= 0.7) {
+    directionScore = 4.8;
+  } else if (partialScore >= 0.45) {
+    directionScore = 3.8;
+  } else {
+    directionScore = 1.5;
   }
 
   let precisionScore = 0;
-  if (question.root_cause_label && answer.includes(normalizeText(question.root_cause_label))) {
-    precisionScore = 2;
-  } else if (mainDirectionScore >= 5) {
+
+  const rootCauseTokens = uniqueTokens(question.root_cause_label || "");
+  const answerTokens = new Set(uniqueTokens(answer));
+
+  let rootHits = 0;
+  for (const token of rootCauseTokens) {
+    if (answerTokens.has(token)) rootHits += 1;
+  }
+
+  const rootRatio = rootCauseTokens.length ? rootHits / rootCauseTokens.length : 0;
+
+  if (rootRatio >= 0.8) {
+    precisionScore = 1.6;
+  } else if (rootRatio >= 0.5) {
     precisionScore = 1.1;
+  } else if (rootRatio >= 0.3) {
+    precisionScore = 0.6;
   }
 
   let reasoningScore = 0;
-  const reasoningKeywords = [
-    ...proof,
-    ...whyNoCode.split(" ").filter((x) => x.length > 4),
-  ];
 
-  if (containsAny(answer, reasoningKeywords)) {
-    reasoningScore = 1;
-  } else if (answer.length > 80) {
+  const reasoningKeywords = buildReasoningKeywords(question);
+  const answerLength = uniqueTokens(answer).length;
+
+  if (anyTokenMatch(answer, reasoningKeywords) && answerLength >= 8) {
+    reasoningScore = 0.9;
+  } else if (answerLength >= 12) {
     reasoningScore = 0.5;
+  } else if (answerLength >= 5) {
+    reasoningScore = 0.2;
   }
 
-  const score = Number(Math.min(10, mainDirectionScore + precisionScore + reasoningScore).toFixed(1));
+  let score = directionScore + precisionScore + reasoningScore;
+
+  score = Math.min(10, Number(score.toFixed(1)));
+
   const rank = isBs ? getRankBs(score) : getRank(score);
 
   const feedback = isBs
-    ? `Ocjena: ${score} / 10 — glavni smjer nosi najviše bodova, precizan uzrok dodaje bonus, a dobro objašnjenje i način dokazivanja podižu rezultat.`
-    : `Score: ${score} / 10 — the main direction carries most of the points, the exact root cause adds a bonus, and sound reasoning plus proof steps push the result higher.`;
+    ? `Ocjena: ${score} / 10 — sistem sada prepoznaje i približno tačne odgovore, ne samo potpuno identične formulacije.`
+    : `Score: ${score} / 10 — the system now recognizes close answers, not only nearly identical phrasing.`;
 
   return { score, rank, feedback };
 }
