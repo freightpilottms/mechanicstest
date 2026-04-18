@@ -68,10 +68,10 @@ function getRank(score: number) {
 }
 
 function getRankBs(score: number) {
-  if (score >= 9) return "Master Tech";
-  if (score >= 7) return "Advanced Mechanic";
-  if (score >= 5) return "Intermediate Mechanic";
-  return "Beginner";
+  if (score >= 9) return "Master mehaničar";
+  if (score >= 7) return "Napredni mehaničar";
+  if (score >= 5) return "Srednji mehaničar";
+  return "Početnik";
 }
 
 function difficultyBadgeClasses(difficulty: Difficulty) {
@@ -128,7 +128,7 @@ export default function TestPage() {
         setLoadError("");
 
         const locale = String(lang || "en");
-const res = await fetch(`/api/scenarios/test-set?count=10&locale=${encodeURIComponent(locale)}`);
+        const res = await fetch(`/api/scenarios/test-set?count=10&locale=${encodeURIComponent(locale)}`);
         const data = await res.json();
 
         if (!res.ok || !data?.ok || !Array.isArray(data?.scenarios)) {
@@ -403,7 +403,7 @@ const res = await fetch(`/api/scenarios/test-set?count=10&locale=${encodeURIComp
 
               <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-4 text-zinc-200">
                 <div className="text-xs uppercase tracking-[0.2em] text-zinc-500">
-                  {isBs ? "Rank" : "Rank"}
+                  {isBs ? "Rang" : "Rank"}
                 </div>
                 <div className="mt-2 text-xl font-black">{finalRank}</div>
               </div>
@@ -474,19 +474,19 @@ const res = await fetch(`/api/scenarios/test-set?count=10&locale=${encodeURIComp
 
                     <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                       <p className="text-sm font-semibold uppercase tracking-[0.2em] text-zinc-500">
-                        {isBs ? "Ocjena i rank" : "Score & Rank"}
+                        {isBs ? "Ocjena i rang" : "Score & Rank"}
                       </p>
                       <p className="mt-3 text-sm leading-6 text-zinc-200">{evaluation.feedback}</p>
 
                       <div className="mt-4 flex flex-wrap gap-2 text-xs text-zinc-400">
                         <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1">
-                          {isBs ? "Rank" : "Rank"}: {evaluation.rank}
+                          {isBs ? "Rang" : "Rank"}: {evaluation.rank}
                         </span>
                         <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1">
                           {isBs ? "Blizina dijagnoze" : "Diagnosis closeness"}: {evaluation.diagnosisPercent}%
                         </span>
                         <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1">
-                          Bonus: +{evaluation.bonus}
+                          {isBs ? "Bonus" : "Bonus"}: +{evaluation.bonus}
                         </span>
                         {evaluation.matchedCause ? (
                           <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1">
@@ -531,18 +531,19 @@ const res = await fetch(`/api/scenarios/test-set?count=10&locale=${encodeURIComp
 
             <div className="mt-8 flex flex-wrap gap-3">
               <Link
-                href="/single-player"
-                className="rounded-2xl border border-white/10 bg-black/20 px-5 py-3 font-bold text-zinc-100 transition hover:bg-white/10"
-              >
-                {isBs ? "Nazad" : "Back"}
-              </Link>
-
-              <Link
-                href="/"
+                href={isBs ? "/single-player?lang=bs" : "/single-player?lang=en"}
                 className="rounded-2xl bg-orange-500 px-5 py-3 font-bold text-black transition hover:bg-orange-400"
               >
-                {isBs ? "Početna" : "Home"}
+                {isBs ? "Nazad na meni" : "Back to menu"}
               </Link>
+
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="rounded-2xl border border-white/10 bg-black/20 px-5 py-3 font-bold text-zinc-100 transition hover:bg-white/10"
+              >
+                {isBs ? "Pokreni novi test" : "Start new test"}
+              </button>
             </div>
           </section>
         </div>
@@ -553,143 +554,165 @@ const res = await fetch(`/api/scenarios/test-set?count=10&locale=${encodeURIComp
   return (
     <main className="min-h-screen bg-[#0a0d12] px-4 py-6 text-white">
       <div className="mx-auto max-w-5xl">
-        <header className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur">
-          <div className="flex flex-wrap items-start justify-between gap-3">
+        <section className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur sm:p-8">
+          <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-orange-400">
                 Mechanic IQ Test
               </p>
-              <h1 className="mt-1 text-2xl font-black tracking-tight">
-                {isBs ? "Pitanje" : "Question"} {currentIndex + 1} / {questions.length}
+              <h1 className="mt-3 text-3xl font-black tracking-tight">
+                {currentQuestion?.title}
               </h1>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <span className={`rounded-full border px-3 py-2 text-xs font-bold uppercase tracking-[0.2em] ${difficultyBadgeClasses(currentQuestion.difficulty)}`}>
-                {getDifficultyText(currentQuestion.difficulty, isBs)} • {formatTime(currentTimeLimit)}
+            <div className="flex flex-wrap gap-2">
+              {currentQuestion && (
+                <span className={`rounded-full border px-3 py-1 text-xs font-bold uppercase tracking-[0.2em] ${difficultyBadgeClasses(currentQuestion.difficulty)}`}>
+                  {getDifficultyText(currentQuestion.difficulty, isBs)}
+                </span>
+              )}
+              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-bold uppercase tracking-[0.2em] text-zinc-300">
+                {currentIndex + 1} / {questions.length}
               </span>
-              <span
-                className={`rounded-full border px-3 py-2 text-sm font-black tracking-[0.18em] ${
-                  timerCritical
-                    ? "border-red-500/30 bg-red-500/10 text-red-300"
-                    : timerWarning
-                    ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
-                    : "border-white/10 bg-black/20 text-zinc-200"
-                }`}
-              >
-                ⏱ {formatTime(timeLeft)}
-              </span>
-              <Link
-                href="/single-player"
-                className="rounded-xl border border-white/10 bg-black/20 px-4 py-2 text-sm font-semibold text-zinc-200 transition hover:bg-white/10"
-              >
-                ← {isBs ? "Nazad" : "Back"}
-              </Link>
             </div>
           </div>
 
-          <div className="mt-4 h-3 overflow-hidden rounded-full bg-white/10">
+          <div className="mt-6 h-2 overflow-hidden rounded-full bg-white/10">
             <div
-              className="h-full rounded-full bg-orange-500 transition-all duration-300"
+              className="h-full rounded-full bg-orange-500 transition-all"
               style={{ width: `${progress}%` }}
             />
           </div>
 
-          <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
-            <div
-              className={`h-full rounded-full transition-all duration-1000 ${
-                timerCritical ? "bg-red-400" : timerWarning ? "bg-amber-400" : "bg-sky-400"
-              }`}
-              style={{ width: `${timerPercent}%` }}
-            />
-          </div>
-        </header>
-
-        <section className="mt-6 rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur sm:p-8">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-zinc-500">
-                {currentQuestion.vehicle}
+          <div className="mt-6 grid gap-4 lg:grid-cols-[1.3fr_0.7fr]">
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-5">
+              <p className="text-sm font-semibold uppercase tracking-[0.2em] text-zinc-500">
+                {isBs ? "Simptomi" : "Symptoms"}
               </p>
-              <h2 className="mt-3 text-3xl font-black tracking-tight">{currentQuestion.title}</h2>
+
+              <ul className="mt-4 space-y-3 text-sm leading-6 text-zinc-200">
+                {currentQuestion?.symptoms.map((item, index) => (
+                  <li key={index} className="rounded-xl border border-white/8 bg-white/5 px-4 py-3">
+                    {item}
+                  </li>
+                ))}
+              </ul>
+
+              <div className="mt-5 grid gap-4 md:grid-cols-2">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">
+                    {isBs ? "Vožnja / uslovi" : "Driving / Conditions"}
+                  </p>
+                  <ul className="mt-3 space-y-2 text-sm leading-6 text-zinc-300">
+                    {currentQuestion?.driving.map((item, index) => (
+                      <li key={index}>• {item}</li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">
+                    {isBs ? "Dodatno" : "Extra"}
+                  </p>
+                  <ul className="mt-3 space-y-2 text-sm leading-6 text-zinc-300">
+                    {currentQuestion?.extra.map((item, index) => (
+                      <li key={index}>• {item}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+
+              {currentQuestion?.hint?.length ? (
+                <div className="mt-5 rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 py-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-orange-300">
+                    {isBs ? "Hint" : "Hint"}
+                  </p>
+                  <ul className="mt-3 space-y-2 text-sm leading-6 text-orange-100">
+                    {currentQuestion.hint.map((item, index) => (
+                      <li key={index}>• {item}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
             </div>
 
-            <span className="rounded-full border border-white/10 bg-black/20 px-3 py-2 text-xs font-bold uppercase tracking-[0.2em] text-zinc-300">
-              {currentQuestion.category}
-            </span>
-          </div>
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-5">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-zinc-500">
+                  {isBs ? "Vrijeme" : "Time"}
+                </p>
+                <span
+                  className={`rounded-full border px-3 py-1 text-xs font-bold uppercase tracking-[0.2em] ${
+                    timerCritical
+                      ? "border-red-500/30 bg-red-500/10 text-red-300"
+                      : timerWarning
+                        ? "border-orange-500/30 bg-orange-500/10 text-orange-300"
+                        : "border-white/10 bg-white/5 text-zinc-300"
+                  }`}
+                >
+                  {formatTime(timeLeft)}
+                </span>
+              </div>
 
-          <div className="mt-6 grid gap-4 lg:grid-cols-2">
-            <SectionCard title={isBs ? "Simptomi" : "Symptoms"} items={currentQuestion.symptoms} />
-            <SectionCard title={isBs ? "U vožnji" : "Driving"} items={currentQuestion.driving} />
-            <SectionCard title={isBs ? "Dodatno" : "Additional"} items={currentQuestion.extra} />
-            <SectionCard title={isBs ? "Ključni detalji" : "Key Details"} items={currentQuestion.key_details} />
-          </div>
+              <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
+                <div
+                  className={`h-full rounded-full transition-all ${
+                    timerCritical ? "bg-red-500" : timerWarning ? "bg-orange-500" : "bg-emerald-500"
+                  }`}
+                  style={{ width: `${timerPercent}%` }}
+                />
+              </div>
 
-          <div className="mt-4 grid gap-4 lg:grid-cols-2">
-            <SectionCard title={isBs ? "Pitanja" : "Questions"} items={currentQuestion.questions} />
-            <SectionCard title="Hint" items={currentQuestion.hint} accent />
-          </div>
+              <div className="mt-6 space-y-5">
+                {currentQuestion?.questions.map((questionText, index) => (
+                  <div key={index} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">
+                      {isBs ? "Zadatak" : "Task"} {index + 1}
+                    </p>
+                    <p className="mt-2 text-sm leading-6 text-zinc-200">{questionText}</p>
+                  </div>
+                ))}
+              </div>
 
-          <div className="mt-6">
-            <label className="mb-3 block text-sm font-semibold text-zinc-300">
-              {isBs ? "Upiši svoj odgovor / dijagnozu" : "Write your answer / diagnosis"}
-            </label>
+              <label className="mt-6 block">
+                <span className="text-sm font-semibold uppercase tracking-[0.2em] text-zinc-500">
+                  {isBs ? "Tvoj odgovor" : "Your Answer"}
+                </span>
+                <textarea
+                  value={currentAnswer}
+                  onChange={(e) => updateAnswer(e.target.value)}
+                  rows={10}
+                  className="mt-3 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm leading-6 text-zinc-100 outline-none transition placeholder:text-zinc-500 focus:border-orange-500/40 focus:bg-white/10"
+                  placeholder={
+                    isBs
+                      ? "Napiši dijagnozu, zašto nema greške i kako bi dokazao kvar..."
+                      : "Write your diagnosis, why there is no fault code, and how you would prove it..."
+                  }
+                />
+              </label>
 
-            <textarea
-              value={currentAnswer}
-              onChange={(e) => updateAnswer(e.target.value)}
-              rows={10}
-              placeholder={
-                isBs
-                  ? "Napiši najvjerovatniji uzrok. Ako želiš, dodaj i zašto ECU možda ne prijavljuje grešku i kako bi kvar dokazao u praksi..."
-                  : "Write the most likely cause. If you want, add why the ECU may not report a fault and how you would prove it in practice..."
-              }
-              className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-4 text-sm leading-6 text-white outline-none transition placeholder:text-zinc-500 focus:border-orange-500/60"
-            />
-          </div>
+              <div className="mt-6 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={() => saveAndAdvance(false)}
+                  className="rounded-2xl bg-orange-500 px-5 py-3 font-bold text-black transition hover:bg-orange-400"
+                >
+                  {currentIndex === questions.length - 1
+                    ? (isBs ? "Završi test" : "Finish Test")
+                    : (isBs ? "Sačuvaj i dalje" : "Save & Next")}
+                </button>
 
-          <div className="mt-6 flex flex-wrap gap-3">
-            <button
-              type="button"
-              onClick={() => saveAndAdvance(false)}
-              className="rounded-2xl bg-orange-500 px-5 py-4 text-base font-bold text-black transition hover:bg-orange-400"
-            >
-              {currentIndex === questions.length - 1
-                ? isBs
-                  ? "Završi test"
-                  : "Finish Test"
-                : isBs
-                ? "Sljedeće pitanje"
-                : "Next Question"}
-            </button>
+                <Link
+                  href={isBs ? "/single-player?lang=bs" : "/single-player?lang=en"}
+                  className="rounded-2xl border border-white/10 bg-black/20 px-5 py-3 font-bold text-zinc-100 transition hover:bg-white/10"
+                >
+                  {isBs ? "Prekini" : "Quit"}
+                </Link>
+              </div>
+            </div>
           </div>
         </section>
       </div>
     </main>
-  );
-}
-
-type SectionCardProps = {
-  title: string;
-  items: string[];
-  accent?: boolean;
-};
-
-function SectionCard({ title, items, accent = false }: SectionCardProps) {
-  return (
-    <div className={`rounded-2xl border p-4 ${accent ? "border-orange-500/20 bg-orange-500/10" : "border-white/10 bg-black/20"}`}>
-      <p className={`text-sm font-semibold uppercase tracking-[0.2em] ${accent ? "text-orange-300" : "text-zinc-500"}`}>
-        {title}
-      </p>
-
-      <ul className="mt-3 space-y-3 text-sm leading-6 text-zinc-300">
-        {items.map((item, index) => (
-          <li key={index} className="rounded-xl border border-white/8 bg-white/5 px-4 py-3">
-            {item}
-          </li>
-        ))}
-      </ul>
-    </div>
   );
 }

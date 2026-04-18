@@ -1,13 +1,44 @@
-import en from "@/messages/en";
-import bs from "@/messages/bs";
+export const translations = {
+  bs: {
+    rank: "Rank",
+    recognized: "Prepoznato",
+    mostLikelyCause: "Najvjerovatniji uzrok",
+    bonus: "Bonus",
+    diagnosis: "Blizina dijagnoze",
 
-export const messages = {
-  en,
-  bs,
+    ranks: {
+      correct: "Master Mechanic",
+      very_close: "Advanced Mechanic",
+      partial: "Intermediate Mechanic",
+      weak: "Beginner",
+      wrong: "Incorrect",
+    },
+  },
+
+  en: {
+    rank: "Rank",
+    recognized: "Recognized",
+    mostLikelyCause: "Most likely cause",
+    bonus: "Bonus",
+    diagnosis: "Diagnosis",
+
+    ranks: {
+      correct: "Master Mechanic",
+      very_close: "Advanced Mechanic",
+      partial: "Intermediate Mechanic",
+      weak: "Beginner",
+      wrong: "Incorrect",
+    },
+  },
 };
 
-export type Locale = keyof typeof messages;
+export function t(lang: "bs" | "en", key: string) {
+  const parts = key.split(".");
+  let value: any = translations[lang];
 
-export function getMessages(locale: Locale) {
-  return messages[locale];
+  for (const p of parts) {
+    value = value?.[p];
+  }
+
+  return value || key;
 }
