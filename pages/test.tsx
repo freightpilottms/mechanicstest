@@ -35,13 +35,24 @@ type AnswerState = {
   timeSpent: number;
 };
 
+type AiEvaluation = {
+  score: number;
+  diagnosis_percent: number;
+  bonus: number;
+  verdict: "correct" | "very_close" | "partial" | "weak" | "wrong";
+  matched_cause: string;
+  reason_short: string;
+};
+
 type EvaluatedResult = {
   score: number;
   rank: string;
   feedback: string;
+  diagnosisPercent: number;
+  bonus: number;
+  verdict: "correct" | "very_close" | "partial" | "weak" | "wrong";
+  matchedCause: string;
 };
-
-
 
 function formatTime(totalSeconds: number) {
   const minutes = Math.floor(totalSeconds / 60);
@@ -73,220 +84,22 @@ function getDifficultyText(difficulty: Difficulty, isBs: boolean) {
   return DIFFICULTY_LABELS[difficulty][isBs ? "bs" : "en"];
 }
 
-
-
-
-
-
-function phraseIncluded(answer: string, phrase: string) {
-  const a = normalizeText(answer);
-  const p = normalizeText(phrase);
-  return !!p && a.includes(p);
-}
-
-
-
-
-function anyTokenMatch(answer: string, keywords: string[]) {
-  const answerTokens = new Set(uniqueTokens(answer));
-  for (const keyword of keywords) {
-    for (const token of uniqueTokens(keyword)) {
-      if (answerTokens.has(token)) return true;
-    }
-  }
-  return false;
-}
-
-function buildReasoningKeywords(question: ScenarioQuestion) {
-  return [
-    ...(question.answer_proof || []),
-    question.answer_why_no_code || "",
-    question.root_cause_label || "",
-    question.answer_main || "",
-  ];
-}
-
-function normalizeText(value: string) {
-  return String(value || "")
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function tokenize(value: string) {
-  return normalizeText(value)
-    .split(" ")
-    .map((x) => x.trim())
-    .filter((x) => x.length > 1);
-}
-
-function uniqueTokens(value: string) {
-  return Array.from(new Set(tokenize(value)));
-}
-
-function overlapRatio(answer: string, target: string) {
-  const a = new Set(uniqueTokens(answer));
-  const t = uniqueTokens(target);
-  if (!t.length) return 0;
-
-  let hits = 0;
-  for (const token of t) {
-    if (a.has(token)) hits++;
-  }
-  return hits / t.length;
-}
-
-function bestOverlap(answer: string, targets: string[]) {
-  let best = 0;
-  const normAnswer = normalizeText(answer);
-
-  for (const target of targets) {
-    const normTarget = normalizeText(target);
-    if (!normTarget) continue;
-
-    if (normAnswer.includes(normTarget)) {
-      best = 1;
-      continue;
-    }
-
-    best = Math.max(best, overlapRatio(normAnswer, normTarget));
-  }
-
-  return best;
-}
-
-function splitIdeas(raw: string) {
-  return String(raw || "")
-    .split(/\n|;|,|\.\s+|\sili\s+|\si\s+|\splus\s+|\/+/gi)
-    .map((x) => x.trim())
-    .filter((x) => x.length > 2)
-    .slice(0, 6);
-}
-
-function closenessPercent(answer: string, accepted: string[], partial: string[]) {
-  const acceptedHit = bestOverlap(answer, accepted);
-  const partialHit = bestOverlap(answer, partial);
-
-  const best = Math.max(acceptedHit, partialHit);
-
-  if (best >= 1) return 100;
-  if (best >= 0.75) return 75;
-  if (best >= 0.6) return 60;
-  if (best >= 0.5) return 50;
-  if (best >= 0.4) return 40;
-  if (best >= 0.2) return 20;
-  return 0;
-}
-
-function percentToPoints(percent: number) {
-  if (percent >= 100) return 10;
-  if (percent >= 75) return 8;
-  if (percent >= 60) return 4;
-  if (percent >= 50) return 4;
-  if (percent >= 40) return 2;
-  if (percent >= 20) return 2;
-  return 0;
-}
-
-function reasoningBonus(answer: string, question: ScenarioQuestion) {
-  const normAnswer = normalizeText(answer);
-  if (!normAnswer) return 0;
-
-  const keywords = [
-    "ecu","dijagnostika","live data","manometar","osciloskop",
-    "smoke test","maf","map","boost","vakum","dpf","egr",
-    "senzor","pritisak","regeneracija","provjeriti",
-    "izmjeriti","test","dokazati"
-  ];
-
-  let hits = 0;
-  for (const word of keywords) {
-    if (normAnswer.includes(word)) hits++;
-  }
-
-  const whyOverlap = overlapRatio(normAnswer, question.answer_why_no_code || "");
-  const proofOverlap = overlapRatio(
-    normAnswer,
-    (question.answer_proof || []).join(" ")
-  );
-
-  if (hits >= 2 || whyOverlap >= 0.18 || proofOverlap >= 0.12) {
-    return 1;
-  }
-
-  return 0;
-}
-
-function evaluateAnswer(
-  question: ScenarioQuestion,
-  rawAnswer: string,
+function buildLocalFallbackEvaluation(
+  answer: string,
   isBs: boolean
 ): EvaluatedResult {
-  const answer = String(rawAnswer || "").trim();
-
-  if (!answer) {
-    return {
-      score: 0,
-      rank: isBs ? getRankBs(0) : getRank(0),
-      feedback: isBs
-        ? "Ocjena: 0 / 10 — nema unesenog odgovora."
-        : "Score: 0 / 10 — no answer provided.",
-    };
-  }
-
-  const accepted = [
-    question.answer_main || "",
-    question.root_cause_label || "",
-    ...(question.accepted_answers || []),
-  ].filter(Boolean);
-
-  const partial = [...(question.partial_answers || [])].filter(Boolean);
-
-  const ideas = splitIdeas(answer);
-
-  let baseScore = 0;
-
-  if (ideas.length <= 1) {
-    const percent = closenessPercent(answer, accepted, partial);
-    baseScore = percentToPoints(percent);
-  } else {
-    const percents = ideas.map((idea) =>
-      closenessPercent(idea, accepted, partial)
-    );
-
-    const meaningful = percents.filter((x) => x > 0);
-
-    if (!meaningful.length) {
-      baseScore = 0;
-    } else {
-      const avg =
-        meaningful.reduce((sum, v) => sum + v, 0) / meaningful.length;
-
-      if (avg >= 75) baseScore = 8;
-      else if (avg >= 60) baseScore = 4;
-      else if (avg >= 50) baseScore = 4;
-      else if (avg >= 40) baseScore = 2;
-      else if (avg >= 20) baseScore = 2;
-      else baseScore = 0;
-    }
-  }
-
-  const bonus = reasoningBonus(answer, question);
-  const total = Math.min(10, Number((baseScore + bonus).toFixed(1)));
-
-  const rank = isBs ? getRankBs(total) : getRank(total);
-
-  const feedback = isBs
-    ? `Ocjena: ${total} / 10 — fokus je na dijagnozi, ne pisanju.`
-    : `Score: ${total} / 10 — focus is on diagnosis, not writing.`;
+  const score = answer.trim() ? 4 : 0;
 
   return {
-    score: total,
-    rank,
-    feedback,
+    score,
+    rank: isBs ? getRankBs(score) : getRank(score),
+    feedback: isBs
+      ? "Privremena ocjena jer AI evaluator nije vratio rezultat."
+      : "Temporary score because AI evaluator did not return a result.",
+    diagnosisPercent: score > 0 ? 50 : 0,
+    bonus: 0,
+    verdict: score > 0 ? "partial" : "wrong",
+    matchedCause: "",
   };
 }
 
@@ -303,6 +116,9 @@ export default function TestPage() {
   const [finished, setFinished] = useState(false);
   const [timeLeft, setTimeLeft] = useState(0);
   const [timerReady, setTimerReady] = useState(false);
+  const [aiResults, setAiResults] = useState<(AiEvaluation | null)[]>([]);
+  const [evaluating, setEvaluating] = useState(false);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -328,6 +144,7 @@ export default function TestPage() {
             timeSpent: 0,
           }))
         );
+        setAiResults(data.scenarios.map(() => null));
         setCurrentIndex(0);
         setFinished(false);
       } catch (err: any) {
@@ -349,24 +166,25 @@ export default function TestPage() {
 
   useEffect(() => {
     if (!currentQuestion || finished) return;
+
     setTimerReady(false);
     setTimeLeft(TIME_LIMITS[currentQuestion.difficulty]);
-  
+
     const id = window.setTimeout(() => {
       setTimerReady(true);
     }, 0);
-  
+
     return () => window.clearTimeout(id);
   }, [currentIndex, currentQuestion, finished]);
 
   useEffect(() => {
     if (!currentQuestion || finished || !timerReady) return;
-  
+
     if (timeLeft <= 0) {
       saveAndAdvance(true);
       return;
     }
-  
+
     const timer = window.setInterval(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
@@ -376,7 +194,7 @@ export default function TestPage() {
         return prev - 1;
       });
     }, 1000);
-  
+
     return () => window.clearInterval(timer);
   }, [timeLeft, currentQuestion, finished, timerReady]);
 
@@ -413,6 +231,50 @@ export default function TestPage() {
     }
 
     setFinished(true);
+    setTimeout(() => {
+      evaluateAllAnswers();
+    }, 0);
+  }
+
+  async function evaluateAllAnswers() {
+    if (!questions.length) return;
+
+    setEvaluating(true);
+
+    try {
+      const settled = await Promise.all(
+        questions.map(async (question, index) => {
+          const userAnswer = answers[index]?.answer || "";
+
+          try {
+            const res = await fetch("/api/evaluate-answer", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                question,
+                userAnswer,
+              }),
+            });
+
+            const data = await res.json();
+
+            if (!res.ok || !data?.ok || !data?.result) {
+              return null;
+            }
+
+            return data.result as AiEvaluation;
+          } catch {
+            return null;
+          }
+        })
+      );
+
+      setAiResults(settled);
+    } finally {
+      setEvaluating(false);
+    }
   }
 
   const progress = questions.length ? ((currentIndex + 1) / questions.length) * 100 : 0;
@@ -425,14 +287,33 @@ export default function TestPage() {
   const results = useMemo(() => {
     return questions.map((question, index) => {
       const answerState = answers[index] || { answer: "", timedOut: false, timeSpent: 0 };
-      const evaluation = evaluateAnswer(question, answerState.answer, isBs);
+      const ai = aiResults[index];
+      const fallback = buildLocalFallbackEvaluation(answerState.answer, isBs);
+
+      const score = ai?.score ?? fallback.score;
+      const rank = isBs ? getRankBs(score) : getRank(score);
+
       return {
         question,
         answerState,
-        evaluation,
+        evaluation: {
+          score,
+          rank,
+          feedback: ai
+            ? (
+                isBs
+                  ? `Ocjena: ${ai.score} / 10 — ${ai.reason_short || "AI evaluator je obradio odgovor."}`
+                  : `Score: ${ai.score} / 10 — ${ai.reason_short || "AI evaluator processed the answer."}`
+              )
+            : fallback.feedback,
+          diagnosisPercent: ai?.diagnosis_percent ?? fallback.diagnosisPercent,
+          bonus: ai?.bonus ?? fallback.bonus,
+          verdict: ai?.verdict ?? fallback.verdict,
+          matchedCause: ai?.matched_cause ?? fallback.matchedCause,
+        } as EvaluatedResult,
       };
     });
-  }, [answers, isBs, questions]);
+  }, [answers, aiResults, isBs, questions]);
 
   const averageScore = useMemo(() => {
     if (!results.length) return 0;
@@ -513,25 +394,39 @@ export default function TestPage() {
 
             <div className="mt-6 grid gap-3 md:grid-cols-4">
               <div className="rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 py-4 text-orange-300">
-                <div className="text-xs uppercase tracking-[0.2em] opacity-80">{isBs ? "Ukupna ocjena" : "Overall Score"}</div>
+                <div className="text-xs uppercase tracking-[0.2em] opacity-80">
+                  {isBs ? "Ukupna ocjena" : "Overall Score"}
+                </div>
                 <div className="mt-2 text-3xl font-black">{averageScore} / 10</div>
               </div>
 
               <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-4 text-zinc-200">
-                <div className="text-xs uppercase tracking-[0.2em] text-zinc-500">{isBs ? "Rank" : "Rank"}</div>
+                <div className="text-xs uppercase tracking-[0.2em] text-zinc-500">
+                  {isBs ? "Rank" : "Rank"}
+                </div>
                 <div className="mt-2 text-xl font-black">{finalRank}</div>
               </div>
 
               <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-4 text-zinc-200">
-                <div className="text-xs uppercase tracking-[0.2em] text-zinc-500">{isBs ? "Odgovoreno" : "Answered"}</div>
+                <div className="text-xs uppercase tracking-[0.2em] text-zinc-500">
+                  {isBs ? "Odgovoreno" : "Answered"}
+                </div>
                 <div className="mt-2 text-xl font-black">{answeredCount} / {questions.length}</div>
               </div>
 
               <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-4 text-zinc-200">
-                <div className="text-xs uppercase tracking-[0.2em] text-zinc-500">{isBs ? "Isteklo vrijeme" : "Timed Out"}</div>
+                <div className="text-xs uppercase tracking-[0.2em] text-zinc-500">
+                  {isBs ? "Isteklo vrijeme" : "Timed Out"}
+                </div>
                 <div className="mt-2 text-xl font-black">{timedOutCount}</div>
               </div>
             </div>
+
+            {evaluating && (
+              <div className="mt-6 rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 py-4 text-sm text-orange-200">
+                {isBs ? "AI ocjenjuje odgovore..." : "AI is evaluating answers..."}
+              </div>
+            )}
 
             <div className="mt-8 space-y-6">
               {results.map(({ question, answerState, evaluation }, index) => (
@@ -581,10 +476,22 @@ export default function TestPage() {
                         {isBs ? "Ocjena i rank" : "Score & Rank"}
                       </p>
                       <p className="mt-3 text-sm leading-6 text-zinc-200">{evaluation.feedback}</p>
+
                       <div className="mt-4 flex flex-wrap gap-2 text-xs text-zinc-400">
                         <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1">
                           {isBs ? "Rank" : "Rank"}: {evaluation.rank}
                         </span>
+                        <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1">
+                          {isBs ? "Blizina dijagnoze" : "Diagnosis closeness"}: {evaluation.diagnosisPercent}%
+                        </span>
+                        <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1">
+                          Bonus: +{evaluation.bonus}
+                        </span>
+                        {evaluation.matchedCause ? (
+                          <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1">
+                            {isBs ? "Prepoznato" : "Matched"}: {evaluation.matchedCause}
+                          </span>
+                        ) : null}
                       </div>
                     </div>
                   </div>
@@ -734,8 +641,8 @@ export default function TestPage() {
               rows={10}
               placeholder={
                 isBs
-                  ? "Napiši najvjerovatniji uzrok, zašto ECU možda ne prijavljuje grešku i kako bi kvar dokazao u praksi..."
-                  : "Write the most likely cause, why the ECU may not report a fault, and how you would prove it in practice..."
+                  ? "Napiši najvjerovatniji uzrok. Ako želiš, dodaj i zašto ECU možda ne prijavljuje grešku i kako bi kvar dokazao u praksi..."
+                  : "Write the most likely cause. If you want, add why the ECU may not report a fault and how you would prove it in practice..."
               }
               className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-4 text-sm leading-6 text-white outline-none transition placeholder:text-zinc-500 focus:border-orange-500/60"
             />
