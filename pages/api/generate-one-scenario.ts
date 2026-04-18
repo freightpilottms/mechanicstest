@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { getOpenAI } from "../../lib/openai";
 import { insertScenario, findScenarioBySignature } from "../../lib/scenario-storage";
 import { makeScenarioSignature } from "../../lib/scenario-signature";
+import { getRandomScenarioSeed, type ScenarioSeed } from "../../lib/scenario-seeds";
 
 type AIResponse = {
   brand: string;
@@ -52,39 +53,42 @@ function validateScenario(data: any): data is AIResponse {
   );
 }
 
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse
-) {
-  try {
-    const openai = getOpenAI();
-    const model = process.env.OPENAI_SCENARIO_MODEL || "gpt-5-mini";
-
-    const prompt = `
+function buildPrompt(seed: ScenarioSeed) {
+  return `
 Generate ONE realistic automotive diagnostic scenario in BOSNIAN/SERBIAN/CROATIAN language.
+
+YOU MUST USE THESE FIXED INPUTS:
+- brand: ${seed.brand}
+- vehicle: ${seed.vehicle}
+- platform_type: ${seed.platform_type}
+- category: ${seed.category}
+- difficulty: ${seed.difficulty}
+- root_cause_id: ${seed.root_cause_id}
+- root_cause_label: ${seed.root_cause_label}
 
 STRICT RULES:
 - Only automotive diagnostics
-- Focus on engine, air flow, fuel flow, exhaust/DPF/EGR, sensors, gearbox, drivetrain
-- Scenario must be realistic
-- Brand/platform/root cause must be compatible
+- Only one concrete root cause, exactly the one provided above
+- Brand / vehicle / platform / category / root cause must stay compatible
 - Return ONLY valid JSON
 - Do not include markdown
-- Questions must be:
+- Do not invent a different brand, vehicle, category, difficulty or root cause
+- Vary symptoms, context, hints and proof steps, but keep the same root cause family
+- Questions must be exactly:
   1. Najvjerovatniji uzrok (1 konkretna stvar)
   2. Zašto ECU ne baca grešku
   3. Kako bi to dokazao u praksi
 
-Use this structure:
+JSON structure:
 {
-  "brand": "BMW",
-  "platform_type": "modern_diesel_cr_turbo_dpf_chain",
-  "category": "Exhaust / DPF / EGR",
-  "root_cause_id": "dpf_partial_restriction",
-  "root_cause_label": "Partially clogged DPF",
-  "difficulty": "hard",
-  "title": "POWER LOSS (TRICKY)",
-  "vehicle": "BMW F10 520d",
+  "brand": "${seed.brand}",
+  "platform_type": "${seed.platform_type}",
+  "category": "${seed.category}",
+  "root_cause_id": "${seed.root_cause_id}",
+  "root_cause_label": "${seed.root_cause_label}",
+  "difficulty": "${seed.difficulty}",
+  "title": "...",
+  "vehicle": "${seed.vehicle}",
   "symptoms": ["..."],
   "driving": ["..."],
   "extra": ["..."],
@@ -107,10 +111,20 @@ Use this structure:
   }
 }
 `;
+}
+
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
+  try {
+    const openai = getOpenAI();
+    const model = process.env.OPENAI_SCENARIO_MODEL || "gpt-5-mini";
+    const seed = getRandomScenarioSeed();
 
     const response = await openai.responses.create({
       model,
-      input: prompt,
+      input: buildPrompt(seed),
     });
 
     const text = response.output_text;
@@ -140,6 +154,7 @@ Use this structure:
         message: "Scenario already exists",
         existing,
         signature,
+        seed,
       });
     }
 
@@ -152,6 +167,7 @@ Use this structure:
       ok: true,
       inserted,
       signature,
+      seed,
     });
   } catch (error: any) {
     return res.status(500).json({

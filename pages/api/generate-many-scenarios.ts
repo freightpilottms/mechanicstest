@@ -5,6 +5,10 @@ import {
   findScenarioBySignature,
   insertScenario,
 } from "../../lib/scenario-storage";
+import {
+  getRandomScenarioSeeds,
+  type ScenarioSeed,
+} from "../../lib/scenario-seeds";
 
 type AIResponse = {
   brand: string;
@@ -55,35 +59,41 @@ function validateScenario(data: any): data is AIResponse {
   );
 }
 
-async function generateOneScenario() {
-  const openai = getOpenAI();
-  const model = process.env.OPENAI_SCENARIO_MODEL || "gpt-5-mini";
-
-  const prompt = `
+function buildPrompt(seed: ScenarioSeed) {
+  return `
 Generate ONE realistic automotive diagnostic scenario in BOSNIAN/SERBIAN/CROATIAN language.
+
+YOU MUST USE THESE FIXED INPUTS:
+- brand: ${seed.brand}
+- vehicle: ${seed.vehicle}
+- platform_type: ${seed.platform_type}
+- category: ${seed.category}
+- difficulty: ${seed.difficulty}
+- root_cause_id: ${seed.root_cause_id}
+- root_cause_label: ${seed.root_cause_label}
 
 STRICT RULES:
 - Only automotive diagnostics
-- Focus on engine, air flow, fuel flow, exhaust/DPF/EGR, sensors, gearbox, drivetrain
-- Scenario must be realistic
-- Brand/platform/root cause must be compatible
+- Only one concrete root cause, exactly the one provided above
+- Brand / vehicle / platform / category / difficulty / root cause must remain exactly as given
 - Return ONLY valid JSON
 - Do not include markdown
-- Questions must be:
+- Create realistic but different symptoms/context/proof steps
+- Questions must be exactly:
   1. Najvjerovatniji uzrok (1 konkretna stvar)
   2. Zašto ECU ne baca grešku
   3. Kako bi to dokazao u praksi
 
-Use this structure:
+JSON structure:
 {
-  "brand": "BMW",
-  "platform_type": "modern_diesel_cr_turbo_dpf_chain",
-  "category": "Exhaust / DPF / EGR",
-  "root_cause_id": "dpf_partial_restriction",
-  "root_cause_label": "Partially clogged DPF",
-  "difficulty": "hard",
-  "title": "POWER LOSS (TRICKY)",
-  "vehicle": "BMW F10 520d",
+  "brand": "${seed.brand}",
+  "platform_type": "${seed.platform_type}",
+  "category": "${seed.category}",
+  "root_cause_id": "${seed.root_cause_id}",
+  "root_cause_label": "${seed.root_cause_label}",
+  "difficulty": "${seed.difficulty}",
+  "title": "...",
+  "vehicle": "${seed.vehicle}",
   "symptoms": ["..."],
   "driving": ["..."],
   "extra": ["..."],
@@ -106,10 +116,15 @@ Use this structure:
   }
 }
 `;
+}
+
+async function generateFromSeed(seed: ScenarioSeed) {
+  const openai = getOpenAI();
+  const model = process.env.OPENAI_SCENARIO_MODEL || "gpt-5-mini";
 
   const response = await openai.responses.create({
     model,
-    input: prompt,
+    input: buildPrompt(seed),
   });
 
   const text = response.output_text;
@@ -129,20 +144,23 @@ export default async function handler(
   if (req.method !== "POST" && req.method !== "GET") {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
+
   try {
     const rawCount = Number(req.body?.count ?? req.query.count ?? 10);
     const count = Math.max(
       1,
-      Math.min(50, Number.isFinite(rawCount) ? rawCount : 10)
+      Math.min(20, Number.isFinite(rawCount) ? rawCount : 10)
     );
 
-    const created: Array<{ id: string; signature: string }> = [];
-    const existing: Array<{ id: string; signature: string }> = [];
-    const failed: Array<{ error: string }> = [];
+    const seeds = getRandomScenarioSeeds(count);
 
-    for (let i = 0; i < count; i += 1) {
+    const created: Array<{ id: string; signature: string; seed: ScenarioSeed }> = [];
+    const existing: Array<{ id: string; signature: string; seed: ScenarioSeed }> = [];
+    const failed: Array<{ error: string; seed: ScenarioSeed }> = [];
+
+    for (const seed of seeds) {
       try {
-        const parsed = await generateOneScenario();
+        const parsed = await generateFromSeed(seed);
 
         const signature = makeScenarioSignature({
           brand: parsed.brand,
@@ -158,6 +176,7 @@ export default async function handler(
           existing.push({
             id: alreadyExists.id,
             signature,
+            seed,
           });
           continue;
         }
@@ -170,10 +189,12 @@ export default async function handler(
         created.push({
           id: inserted.id,
           signature,
+          seed,
         });
       } catch (err: any) {
         failed.push({
           error: String(err?.message || err),
+          seed,
         });
       }
     }
