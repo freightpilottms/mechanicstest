@@ -352,7 +352,7 @@ export default function TestPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-[#0a0d12] px-3 py-4 text-white sm:px-4 sm:py-6 lg:px-6">
+      <main className="min-h-screen bg-[#0a0d12] px-2 py-4 text-white sm:px-3 sm:py-6 lg:px-6">
         <div className="mx-auto max-w-6xl">
           <section className="rounded-3xl border border-white/10 bg-white/5 p-8 backdrop-blur">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-orange-400">
@@ -369,7 +369,7 @@ export default function TestPage() {
 
   if (loadError) {
     return (
-      <main className="min-h-screen bg-[#0a0d12] px-3 py-4 text-white sm:px-4 sm:py-6 lg:px-6">
+      <main className="min-h-screen bg-[#0a0d12] px-2 py-4 text-white sm:px-3 sm:py-6 lg:px-6">
         <div className="mx-auto max-w-6xl">
           <section className="rounded-3xl border border-red-500/20 bg-red-500/10 p-8 backdrop-blur">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-red-300">
@@ -379,17 +379,17 @@ export default function TestPage() {
               {isBs ? "Test nije učitan" : "Test failed to load"}
             </h1>
             <p className="mt-4 text-sm text-red-100">{loadError}</p>
-            <div className="mt-6 flex flex-wrap gap-3">
+            <div className="mt-6 flex gap-3">
               <button
                 type="button"
                 onClick={() => window.location.reload()}
-                className="rounded-2xl bg-orange-500 px-5 py-3 font-bold text-black transition hover:bg-orange-400"
+                className="rounded-2xl bg-orange-500 px-5 py-3 flex-1 font-bold text-black transition hover:bg-orange-400"
               >
                 {isBs ? "Pokušaj ponovo" : "Try Again"}
               </button>
               <Link
                 href="/single-player"
-                className="rounded-2xl border border-white/10 bg-black/20 px-5 py-3 font-bold text-zinc-100 transition hover:bg-white/10"
+                className="rounded-2xl border border-white/10 bg-black/20 px-5 py-3 flex-1 font-bold text-zinc-100 transition hover:bg-white/10"
               >
                 {isBs ? "Nazad" : "Back"}
               </Link>
@@ -406,7 +406,7 @@ export default function TestPage() {
 
   if (finished) {
     return (
-      <main className="min-h-screen bg-[#0a0d12] px-3 py-4 text-white sm:px-4 sm:py-6 lg:px-6">
+      <main className="min-h-screen bg-[#0a0d12] px-2 py-4 text-white sm:px-3 sm:py-6 lg:px-6">
         <div className="mx-auto max-w-6xl">
           <section className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur sm:p-8">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-orange-400">
@@ -556,7 +556,7 @@ export default function TestPage() {
             <div className="mt-8 flex flex-wrap gap-3">
               <Link
                 href={isBs ? "/single-player?lang=bs" : "/single-player?lang=en"}
-                className="rounded-2xl bg-orange-500 px-5 py-3 font-bold text-black transition hover:bg-orange-400"
+                className="rounded-2xl bg-orange-500 px-5 py-3 flex-1 font-bold text-black transition hover:bg-orange-400"
               >
                 {isBs ? "Nazad na meni" : "Back to menu"}
               </Link>
@@ -564,7 +564,7 @@ export default function TestPage() {
               <button
                 type="button"
                 onClick={() => window.location.reload()}
-                className="rounded-2xl border border-white/10 bg-black/20 px-5 py-3 font-bold text-zinc-100 transition hover:bg-white/10"
+                className="rounded-2xl border border-white/10 bg-black/20 px-5 py-3 flex-1 font-bold text-zinc-100 transition hover:bg-white/10"
               >
                 {isBs ? "Pokreni novi test" : "Start new test"}
               </button>
@@ -576,7 +576,7 @@ export default function TestPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#0a0d12] px-3 py-4 text-white sm:px-4 sm:py-6 lg:px-6">
+    <main className="min-h-screen bg-[#0a0d12] px-2 py-4 text-white sm:px-3 sm:py-6 lg:px-6">
       {showFloatingTimer ? (
         <div className="fixed right-3 top-3 z-40 rounded-2xl border border-white/10 bg-[#0f141b]/95 px-3 py-3 shadow-2xl backdrop-blur lg:hidden">
           <div className="flex items-center gap-3">
@@ -770,11 +770,11 @@ export default function TestPage() {
                 />
               </label>
 
-              <div className="mt-6 flex flex-wrap gap-3">
+              <div className="mt-6 flex gap-3">
                 <button
                   type="button"
                   onClick={() => saveAndAdvance(false)}
-                  className="rounded-2xl bg-orange-500 px-5 py-3 font-bold text-black transition hover:bg-orange-400"
+                  className="rounded-2xl bg-orange-500 px-5 py-3 flex-1 font-bold text-black transition hover:bg-orange-400"
                 >
                   {isBs ? "Odgovori" : "Answer"}
                 </button>
@@ -782,7 +782,7 @@ export default function TestPage() {
                 <button
                   type="button"
                   onClick={handleQuit}
-                  className="rounded-2xl border border-white/10 bg-black/20 px-5 py-3 font-bold text-zinc-100 transition hover:bg-white/10"
+                  className="rounded-2xl border border-white/10 bg-black/20 px-5 py-3 flex-1 font-bold text-zinc-100 transition hover:bg-white/10"
                 >
                   {isBs ? "Odustani" : "Give Up"}
                 </button>
