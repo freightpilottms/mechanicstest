@@ -60,6 +60,11 @@ function formatTime(totalSeconds: number) {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
+function scrollPageToTop() {
+  if (typeof window === "undefined") return;
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
 function getRank(score: number) {
   if (score >= 9) return "Master Tech";
   if (score >= 7) return "Advanced";
@@ -226,6 +231,8 @@ export default function TestPage() {
       return next;
     });
 
+    scrollPageToTop();
+
     if (currentIndex < questions.length - 1) {
       setCurrentIndex((prev) => prev + 1);
       return;
@@ -329,7 +336,7 @@ export default function TestPage() {
   if (loading) {
     return (
       <main className="min-h-screen bg-[#0a0d12] px-4 py-6 text-white">
-        <div className="mx-auto max-w-5xl">
+        <div className="mx-auto max-w-7xl">
           <section className="rounded-3xl border border-white/10 bg-white/5 p-8 backdrop-blur">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-orange-400">
               Mechanic IQ Test
@@ -346,7 +353,7 @@ export default function TestPage() {
   if (loadError) {
     return (
       <main className="min-h-screen bg-[#0a0d12] px-4 py-6 text-white">
-        <div className="mx-auto max-w-5xl">
+        <div className="mx-auto max-w-7xl">
           <section className="rounded-3xl border border-red-500/20 bg-red-500/10 p-8 backdrop-blur">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-red-300">
               {isBs ? "Greška" : "Error"}
@@ -383,8 +390,8 @@ export default function TestPage() {
   if (finished) {
     return (
       <main className="min-h-screen bg-[#0a0d12] px-4 py-6 text-white">
-        <div className="mx-auto max-w-5xl">
-          <section className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur sm:p-8">
+        <div className="mx-auto max-w-6xl">
+          <section className="rounded-3xl border border-white/10 bg-white/5 p-4 backdrop-blur sm:p-6 lg:p-7">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-orange-400">
               {isBs ? "Rezultati testa" : "Test Results"}
             </p>
@@ -553,8 +560,8 @@ export default function TestPage() {
 
   return (
     <main className="min-h-screen bg-[#0a0d12] px-4 py-6 text-white">
-      <div className="mx-auto max-w-5xl">
-        <section className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur sm:p-8">
+      <div className="mx-auto max-w-6xl">
+        <section className="rounded-3xl border border-white/10 bg-white/5 p-4 backdrop-blur sm:p-6 lg:p-7">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-orange-400">
@@ -584,8 +591,52 @@ export default function TestPage() {
             />
           </div>
 
-          <div className="mt-6 grid gap-4 lg:grid-cols-[1.3fr_0.7fr]">
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-5">
+          <div className="mt-4 flex flex-col gap-3 sm:mt-5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between lg:hidden">
+            <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-500">
+                {isBs ? "Vozilo" : "Vehicle"}
+              </p>
+              <p className="mt-1 text-sm font-bold text-zinc-100">{currentQuestion?.vehicle}</p>
+            </div>
+
+            <div className="sticky top-2 z-20 rounded-2xl border border-white/10 bg-[#0a0d12]/95 px-4 py-3 shadow-[0_10px_30px_rgba(0,0,0,0.35)] backdrop-blur">
+              <div className="flex items-center justify-between gap-4">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-500">
+                  {isBs ? "Vrijeme" : "Time"}
+                </p>
+                <span
+                  className={`rounded-full border px-3 py-1 text-xs font-bold uppercase tracking-[0.2em] ${
+                    timerCritical
+                      ? "border-red-500/30 bg-red-500/10 text-red-300"
+                      : timerWarning
+                        ? "border-orange-500/30 bg-orange-500/10 text-orange-300"
+                        : "border-white/10 bg-white/5 text-zinc-300"
+                  }`}
+                >
+                  {formatTime(timeLeft)}
+                </span>
+              </div>
+
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
+                <div
+                  className={`h-full rounded-full transition-all ${
+                    timerCritical ? "bg-red-500" : timerWarning ? "bg-orange-500" : "bg-emerald-500"
+                  }`}
+                  style={{ width: `${timerPercent}%` }}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-4 lg:grid-cols-[1.45fr_0.85fr] xl:grid-cols-[1.55fr_0.8fr]">
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-4 sm:p-5 lg:p-6">
+              <div className="mb-5 hidden rounded-2xl border border-white/10 bg-white/5 px-4 py-4 lg:block">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-500">
+                  {isBs ? "Vozilo" : "Vehicle"}
+                </p>
+                <p className="mt-1 text-base font-bold text-zinc-100">{currentQuestion?.vehicle}</p>
+              </div>
+
               <p className="text-sm font-semibold uppercase tracking-[0.2em] text-zinc-500">
                 {isBs ? "Simptomi" : "Symptoms"}
               </p>
@@ -636,42 +687,68 @@ export default function TestPage() {
               ) : null}
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-5">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-zinc-500">
-                  {isBs ? "Vrijeme" : "Time"}
-                </p>
-                <span
-                  className={`rounded-full border px-3 py-1 text-xs font-bold uppercase tracking-[0.2em] ${
-                    timerCritical
-                      ? "border-red-500/30 bg-red-500/10 text-red-300"
-                      : timerWarning
-                        ? "border-orange-500/30 bg-orange-500/10 text-orange-300"
-                        : "border-white/10 bg-white/5 text-zinc-300"
-                  }`}
-                >
-                  {formatTime(timeLeft)}
-                </span>
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-4 sm:p-5 lg:sticky lg:top-4 lg:self-start lg:p-6">
+              <div className="hidden lg:block">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold uppercase tracking-[0.2em] text-zinc-500">
+                    {isBs ? "Vrijeme" : "Time"}
+                  </p>
+                  <span
+                    className={`rounded-full border px-3 py-1 text-xs font-bold uppercase tracking-[0.2em] ${
+                      timerCritical
+                        ? "border-red-500/30 bg-red-500/10 text-red-300"
+                        : timerWarning
+                          ? "border-orange-500/30 bg-orange-500/10 text-orange-300"
+                          : "border-white/10 bg-white/5 text-zinc-300"
+                    }`}
+                  >
+                    {formatTime(timeLeft)}
+                  </span>
+                </div>
+
+                <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
+                  <div
+                    className={`h-full rounded-full transition-all ${
+                      timerCritical ? "bg-red-500" : timerWarning ? "bg-orange-500" : "bg-emerald-500"
+                    }`}
+                    style={{ width: `${timerPercent}%` }}
+                  />
+                </div>
               </div>
 
-              <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
-                <div
-                  className={`h-full rounded-full transition-all ${
-                    timerCritical ? "bg-red-500" : timerWarning ? "bg-orange-500" : "bg-emerald-500"
-                  }`}
-                  style={{ width: `${timerPercent}%` }}
-                />
-              </div>
+              <div className="mt-0 space-y-4 lg:mt-6">
+                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">
+                    {isBs ? "Zadatak" : "Task"}
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-zinc-200">
+                    {isBs
+                      ? "Napiši najvjerovatniji uzrok."
+                      : "Write the single most likely cause."}
+                  </p>
+                </div>
 
-              <div className="mt-6 space-y-5">
-                {currentQuestion?.questions.map((questionText, index) => (
-                  <div key={index} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">
-                      {isBs ? "Zadatak" : "Task"} {index + 1}
-                    </p>
-                    <p className="mt-2 text-sm leading-6 text-zinc-200">{questionText}</p>
-                  </div>
-                ))}
+                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">
+                    {isBs ? "Bodovanje" : "Scoring"}
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-zinc-200">
+                    {isBs
+                      ? "Ako napišete više odgovora, prvi se uzima kao primarni odgovor, a ostali kao alternativa. Ocjena se daje prvenstveno na osnovu prvog odgovora."
+                      : "If you write more than one answer, the first one is treated as your primary answer and the rest as alternatives. Scoring is based mainly on the first answer."}
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 py-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-orange-300">
+                    BONUS
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-orange-100">
+                    {isBs
+                      ? "Dobijate dodatni bod ukoliko detaljnije i tehnički preciznije objasnite problem."
+                      : "You get one bonus point if you explain the problem in more detail and with better technical precision."}
+                  </p>
+                </div>
               </div>
 
               <label className="mt-6 block">
