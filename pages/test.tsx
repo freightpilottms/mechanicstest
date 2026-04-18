@@ -353,7 +353,7 @@ export default function TestPage() {
   if (loading) {
     return (
       <main className="min-h-screen bg-[#0a0d12] px-2 py-4 text-white sm:px-3 sm:py-6 lg:px-6">
-        <div className="mx-auto max-w-6xl">
+        <div className="mx-auto w-full max-w-full lg:max-w-6xl">
           <section className="rounded-3xl border border-white/10 bg-white/5 p-8 backdrop-blur">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-orange-400">
               Mechanic IQ Test
@@ -370,7 +370,7 @@ export default function TestPage() {
   if (loadError) {
     return (
       <main className="min-h-screen bg-[#0a0d12] px-2 py-4 text-white sm:px-3 sm:py-6 lg:px-6">
-        <div className="mx-auto max-w-6xl">
+        <div className="mx-auto w-full max-w-full lg:max-w-6xl">
           <section className="rounded-3xl border border-red-500/20 bg-red-500/10 p-8 backdrop-blur">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-red-300">
               {isBs ? "Greška" : "Error"}
@@ -407,7 +407,7 @@ export default function TestPage() {
   if (finished) {
     return (
       <main className="min-h-screen bg-[#0a0d12] px-2 py-4 text-white sm:px-3 sm:py-6 lg:px-6">
-        <div className="mx-auto max-w-6xl">
+        <div className="mx-auto w-full max-w-full lg:max-w-6xl">
           <section className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur sm:p-8">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-orange-400">
               {isBs ? "Rezultati testa" : "Test Results"}
@@ -606,7 +606,7 @@ export default function TestPage() {
         </div>
       ) : null}
 
-      <div className="mx-auto max-w-6xl">
+      <div className="mx-auto w-full max-w-full lg:max-w-6xl">
         <section className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur sm:p-8">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
