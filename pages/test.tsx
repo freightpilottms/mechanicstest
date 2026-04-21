@@ -14,7 +14,12 @@ import {
   type AnswerState,
   type ScenarioQuestion,
 } from "@/lib/test-session";
-
+import type { LeaderboardEntry } from "@/lib/leaderboard";
+import {
+  getLocalPlayerName,
+  getOrCreateLocalPlayerKey,
+  saveLocalLeaderboardEntry,
+} from "@/lib/leaderboard";
 type EvaluatedResult = {
   score: number;
   rank: string;
@@ -100,13 +105,7 @@ export default function TestPage() {
   const [showFloatingTimer, setShowFloatingTimer] = useState(false);
 
   const sessionIdRef = useRef(buildTestSessionId(testMode, locale));
-
-  useEffect(() => {
-    if (typeof routeLang !== "string") return;
-    if ((routeLang === "en" || routeLang === "bs") && routeLang !== locale) {
-      setLocale(routeLang as Locale);
-    }
-  }, [routeLang, locale, setLocale]);
+  const leaderboardSubmittedRef = useRef(false);
 
   useEffect(() => {
     sessionIdRef.current = buildTestSessionId(testMode, locale);
@@ -441,7 +440,44 @@ const progress = questions.length ? ((currentIndex + 1) / questions.length) * 10
   const finalRank = isBs ? getRankBs(averageScore) : getRank(averageScore);
   const answeredCount = answers.filter((entry) => entry?.answer?.trim().length > 0).length;
   const timedOutCount = answers.filter((entry) => entry?.timedOut).length;
-
+  useEffect(() => {
+    if (!finished || evaluating || !results.length || leaderboardSubmittedRef.current) return;
+  
+    const entry: LeaderboardEntry = {
+      player_key: getOrCreateLocalPlayerKey(),
+      player_name: getLocalPlayerName(),
+      avg_score: Number(averageScore.toFixed(1)),
+      total_points: results.reduce((sum, item) => sum + item.evaluation.score, 0),
+      rank_label: finalRank,
+      mode: String(router.query.mode || "all"),
+      locale: isBs ? "bs" : "en",
+      played_at: new Date().toISOString(),
+      question_count: results.length,
+      answered_count: answeredCount,
+      timed_out_count: timedOutCount,
+    };
+  
+    saveLocalLeaderboardEntry(entry);
+    leaderboardSubmittedRef.current = true;
+  
+    fetch("/api/leaderboard", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(entry),
+    }).catch(() => {});
+  }, [
+    answeredCount,
+    averageScore,
+    evaluating,
+    finalRank,
+    finished,
+    isBs,
+    results,
+    router.query.mode,
+    timedOutCount,
+  ]);
   if (loading) {
     return (
       <main className="min-h-screen bg-[#0a0d12] px-1 py-4 text-white sm:px-2 sm:py-6 lg:px-6">
