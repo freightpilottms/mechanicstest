@@ -2,7 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { getOpenAI } from "../../lib/openai";
 
 type ScenarioQuestion = {
-  id: string;
+  id?: string;
   brand: string;
   platform_type: string;
   category: string;
@@ -22,6 +22,9 @@ type ScenarioQuestion = {
   answer_proof: string[];
   accepted_answers: string[];
   partial_answers: string[];
+  locale?: "en" | "bs";
+  language?: "en" | "bs";
+  scoring_notes?: Record<string, any>;
 };
 
 type EvalApiResponse = {
@@ -57,9 +60,125 @@ function sanitizeResult(raw: any): EvalApiResponse {
   };
 }
 
-function buildPrompt(question: ScenarioQuestion, userAnswer: string) {
+function inferLocale(question: ScenarioQuestion, userAnswer: string): "en" | "bs" {
+  if (question.locale === "bs" || question.language === "bs") return "bs";
+  if (question.locale === "en" || question.language === "en") return "en";
+
+  const sample = [
+    question.title,
+    question.answer_main,
+    question.answer_why_no_code,
+    ...(question.questions || []),
+    ...(question.symptoms || []),
+    ...(question.driving || []),
+    ...(question.extra || []),
+    userAnswer,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  const bsSignals = [
+    "najvjerovatniji",
+    "uzrok",
+    "kvar",
+    "ler",
+    "motora",
+    "grešku",
+    "dokazao",
+    "vožnje",
+    "rashladne",
+    "zveckanje",
+    "hučanje",
+    "pritisak",
+    "gubitak",
+    "zagrij",
+    "curenje",
+    "djelomično",
+    "začepljen",
+  ];
+
+  const score = bsSignals.reduce(
+    (sum, token) => sum + (sample.includes(token) ? 1 : 0),
+    0
+  );
+
+  return score >= 2 ? "bs" : "en";
+}
+
+function getDifficultyAdjustmentGuide(
+  difficulty: "easy" | "medium" | "hard",
+  locale: "en" | "bs"
+) {
+  if (locale === "bs") {
+    if (difficulty === "easy") {
+      return `
+DIFFICULTY EASY:
+- Budi malo tolerantniji.
+- Ako korisnik pogodi tačan dio ili vrlo blizak uzrok, ocjena treba biti visoka.
+- Širi odgovor koji jasno pokazuje pravi pravac može dobiti 6 do 8.
+`;
+    }
+
+    if (difficulty === "medium") {
+      return `
+DIFFICULTY MEDIUM:
+- Traži dobar dijagnostički pravac i solidnu preciznost.
+- Tačan dio ili vrlo blizak uzrok treba dobiti 7 do 10.
+- Preširoki odgovori neka ostanu u partial zoni.
+`;
+    }
+
+    return `
+DIFFICULTY HARD:
+- I dalje ocjenjuj velikodušno ako je korisnik suštinski pogodio kvar.
+- Ali za 9 do 10 traži vrlo blizak ili tačan uzrok.
+- Širi odgovori koji samo pogađaju sistem neka budu niže nego kod easy scenarija.
+`;
+  }
+
+  if (difficulty === "easy") {
+    return `
+DIFFICULTY EASY:
+- Be slightly more forgiving.
+- If the user identifies the correct component or a very close cause, the score should be high.
+- A broader but clearly correct direction can still score 6 to 8.
+`;
+  }
+
+  if (difficulty === "medium") {
+    return `
+DIFFICULTY MEDIUM:
+- Require a good diagnostic direction and decent precision.
+- Correct component or very close root cause should score 7 to 10.
+- Broad answers should remain in partial territory.
+`;
+  }
+
+  return `
+DIFFICULTY HARD:
+- Still grade generously if the user essentially found the correct fault.
+- But for 9 to 10, require a very close or exact diagnosis.
+- Broad answers that only identify the general system should score lower than on easy scenarios.
+`;
+}
+
+function buildPrompt(
+  question: ScenarioQuestion,
+  userAnswer: string,
+  locale: "en" | "bs"
+) {
+  const isBs = locale === "bs";
+  const difficultyGuide = getDifficultyAdjustmentGuide(question.difficulty, locale);
+
   return `
 You are grading a mechanic diagnostic answer.
+
+OUTPUT LANGUAGE:
+- You must write matched_cause and reason_short in ${isBs ? "Bosnian" : "English"} only.
+- Do not mix languages.
+- Keep reason_short short, natural, and workshop-style.
+- If locale is Bosnian, use natural mechanic-style Bosnian wording, not literal translation.
 
 IMPORTANT GOAL:
 This app is about DIAGNOSIS SKILL, not elegant writing.
@@ -75,6 +194,9 @@ CORE PRINCIPLES:
 5. "Why ECU may not set a fault" and "How to prove it" are BONUS only.
 6. Do NOT require exact wording from accepted answers.
 7. Judge meaning, not sentence beauty.
+8. If the user names the exact failed component OR an expert-equivalent mechanic explanation, score strongly.
+9. If the user gives the correct subsystem but not the exact failure mode, this can still be partial or very_close depending on proximity.
+10. accepted_answers and partial_answers are semantic guides, not exact-match rules.
 
 STRICT SCORING PHILOSOPHY:
 - 10/10 = exact root cause or expert-level equivalent phrasing
@@ -103,7 +225,17 @@ HOW TO INTERPRET ANSWERS:
 - If the user shotgun-lists many random causes, reduce score.
 - If the user only gives a broad area like "fuel issue", "sensor issue", "boost leak area", "EGR problem", score it as partial/weak unless it clearly matches the real root cause closely.
 - Mechanic-style shorthand is acceptable.
-- Bosnian/Serbian/Croatian and English wording can both be treated as valid if the meaning matches.
+- Bosnian/Serbian/Croatian and English wording can both be treated as valid if the meaning matches, but your OUTPUT must stay in the requested locale.
+
+SYNONYM / PARTIAL MATCHING RULES:
+- accepted_answers contains realistic acceptable phrasings of the correct diagnosis
+- partial_answers contains close but incomplete answers
+- If the user's answer clearly matches accepted_answers semantically, score in the strong range
+- If the user's answer clearly matches partial_answers semantically, score in the partial range unless their own wording shows stronger understanding
+- Do not require the exact same words
+- Prioritize meaning over wording
+
+${difficultyGuide}
 
 VERY IMPORTANT:
 You are NOT grading whether the user fully answered:
@@ -168,6 +300,9 @@ ${question.answer_why_no_code}
 HOW TO PROVE IT:
 ${JSON.stringify(question.answer_proof || [])}
 
+OPTIONAL SCORING NOTES:
+${JSON.stringify(question.scoring_notes || {})}
+
 USER ANSWER:
 ${userAnswer}
 
@@ -176,6 +311,8 @@ Before returning JSON, think like an experienced mechanic instructor:
 - Is the user very close?
 - Did the user only identify the broad area?
 - Did the user provide proof/testing logic that deserves bonus?
+- Did the user use a natural synonym for the same fault?
+- Is the output language correct?
 
 Return JSON only.
 `;
@@ -200,12 +337,14 @@ export default async function handler(
       return res.status(400).json({ ok: false, error: "Missing userAnswer" });
     }
 
+    const locale = inferLocale(question as ScenarioQuestion, userAnswer);
+
     const openai = getOpenAI();
     const model = process.env.OPENAI_SCORING_MODEL || "gpt-5-mini";
 
     const response = await openai.responses.create({
       model,
-      input: buildPrompt(question as ScenarioQuestion, userAnswer),
+      input: buildPrompt(question as ScenarioQuestion, userAnswer, locale),
     });
 
     const text = response.output_text?.trim();
@@ -224,6 +363,7 @@ export default async function handler(
 
     return res.status(200).json({
       ok: true,
+      locale,
       result,
     });
   } catch (error: any) {
