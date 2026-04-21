@@ -233,7 +233,7 @@ export default function HomePage() {
               <p className="mt-4 max-w-2xl text-xl leading-8 text-zinc-200">
                 {isBs
                   ? "Dijagnosticiraj kvar, povećaj svoj rank i dokaži znanje."
-                  : "Diagnose the fault, increase your rank and prove your knowledge."}
+                  : "Diagnose the fault, increase your rank and prove knowledge."}
               </p>
 
               <div className="mt-8 grid gap-4 sm:max-w-xl">
@@ -307,7 +307,7 @@ export default function HomePage() {
 
         <section className="grid gap-6 pb-4 xl:grid-cols-2">
           <LeaderboardCard
-            title={isBs ? "Your vs Friends" : "Your vs Friends"}
+            title={isBs ? "You vs Friends" : "You vs Friends"}
             rows={topLocalRows}
             loading={false}
             emptyText={isBs ? "Još nema lokalnih rezultata." : "No local results yet."}
