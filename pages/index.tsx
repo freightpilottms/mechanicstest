@@ -2,7 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { getMessages } from "@/lib/i18n";
 import { useLocale } from "@/lib/locale-context";
-import { getLocalLeaderboard, getTopLocalLeaderboard, type LeaderboardEntry } from "@/lib/leaderboard";
+import {
+  getLocalLeaderboard,
+  getTopLocalLeaderboard,
+  type LeaderboardEntry,
+} from "@/lib/leaderboard";
 
 function formatOrdinal(n: number, isBs: boolean) {
   if (!n || n < 1) return isBs ? "Ti: —" : "You: —";
@@ -19,13 +23,18 @@ function formatOrdinal(n: number, isBs: boolean) {
 
 function getBestPlayerPosition(rows: LeaderboardEntry[], playerName = "You") {
   const normalized = playerName.trim().toLowerCase();
-  const index = rows.findIndex((row) => row.player_name.trim().toLowerCase() === normalized);
+  const index = rows.findIndex(
+    (row) => row.player_name.trim().toLowerCase() === normalized
+  );
   return index >= 0 ? index + 1 : null;
 }
 
 function getYouRow(rows: LeaderboardEntry[], playerName = "You") {
   const normalized = playerName.trim().toLowerCase();
-  return rows.find((row) => row.player_name.trim().toLowerCase() === normalized) || null;
+  return (
+    rows.find((row) => row.player_name.trim().toLowerCase() === normalized) ||
+    null
+  );
 }
 
 function LeaderboardCard({
@@ -48,7 +57,10 @@ function LeaderboardCard({
   return (
     <div className="rounded-[28px] border border-white/10 bg-white/5 p-5 backdrop-blur-md sm:p-6">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="text-[28px] font-black tracking-tight text-white">{title}</h3>
+        <h3 className="text-[28px] font-black tracking-tight text-white">
+          {title}
+        </h3>
+
         <div className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-300">
           {positionLabel}
         </div>
@@ -70,11 +82,17 @@ function LeaderboardCard({
                 key={`${row.player_key}-${row.played_at}-${index}`}
                 className="grid grid-cols-[32px_minmax(0,1fr)_auto] items-center gap-3 border-b border-white/8 px-2 py-3 last:border-b-0"
               >
-                <div className="text-xl font-semibold text-white">{index + 1}</div>
+                <div className="text-xl font-semibold text-white">
+                  {index + 1}
+                </div>
 
                 <div className="min-w-0">
-                  <p className="truncate text-[15px] font-bold text-white">{row.player_name}</p>
-                  <p className="truncate text-sm text-zinc-400">{row.rank_label}</p>
+                  <p className="truncate text-[15px] font-bold text-white">
+                    {row.player_name}
+                  </p>
+                  <p className="truncate text-sm text-zinc-400">
+                    {row.rank_label}
+                  </p>
                 </div>
 
                 <div className="text-right text-[15px] font-black text-orange-400">
@@ -91,8 +109,12 @@ function LeaderboardCard({
               </div>
 
               <div className="min-w-0">
-                <p className="truncate text-[16px] font-black text-white">{youRow.player_name}</p>
-                <p className="truncate text-sm text-zinc-300">{youRow.rank_label}</p>
+                <p className="truncate text-[16px] font-black text-white">
+                  {youRow.player_name}
+                </p>
+                <p className="truncate text-sm text-zinc-300">
+                  {youRow.rank_label}
+                </p>
               </div>
 
               <div className="text-right text-[18px] font-black text-emerald-300">
@@ -148,8 +170,14 @@ export default function HomePage() {
     };
   }, []);
 
-  const localPosition = useMemo(() => getBestPlayerPosition(allLocalRows), [allLocalRows]);
-  const globalPosition = useMemo(() => getBestPlayerPosition(globalRows), [globalRows]);
+  const localPosition = useMemo(
+    () => getBestPlayerPosition(allLocalRows),
+    [allLocalRows]
+  );
+  const globalPosition = useMemo(
+    () => getBestPlayerPosition(globalRows),
+    [globalRows]
+  );
 
   const localYouRow = useMemo(() => getYouRow(allLocalRows), [allLocalRows]);
   const globalYouRow = useMemo(() => getYouRow(globalRows), [globalRows]);
@@ -195,14 +223,18 @@ export default function HomePage() {
             <p className="text-[11px] font-semibold tracking-[0.28em] text-orange-400">
               {t.brandTop}
             </p>
-            <h1 className="mt-1 text-xl font-bold tracking-tight sm:text-2xl">{t.appName}</h1>
+            <h1 className="mt-1 text-xl font-bold tracking-tight sm:text-2xl">
+              {t.appName}
+            </h1>
           </div>
 
           <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/20 p-1">
             <button
               onClick={() => setLocale("en")}
               className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${
-                locale === "en" ? "bg-orange-500 text-black" : "text-zinc-300 hover:bg-white/10"
+                locale === "en"
+                  ? "bg-orange-500 text-black"
+                  : "text-zinc-300 hover:bg-white/10"
               }`}
             >
               EN
@@ -210,7 +242,9 @@ export default function HomePage() {
             <button
               onClick={() => setLocale("bs")}
               className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${
-                locale === "bs" ? "bg-orange-500 text-black" : "text-zinc-300 hover:bg-white/10"
+                locale === "bs"
+                  ? "bg-orange-500 text-black"
+                  : "text-zinc-300 hover:bg-white/10"
               }`}
             >
               BS
@@ -223,7 +257,7 @@ export default function HomePage() {
             <div className="max-w-2xl">
               <div className="inline-flex items-center justify-center gap-2 rounded-full border border-orange-500/35 bg-orange-500/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-orange-300">
                 <span>🛠️</span>
-                <span>{isBs ? "AI Diagnostic Challenge" : "AI Diagnostic Challenge"}</span>
+                <span>AI Diagnostic Challenge</span>
               </div>
 
               <h2 className="mt-6 text-5xl font-black leading-[0.95] tracking-tight sm:text-6xl">
@@ -269,7 +303,7 @@ export default function HomePage() {
                 ⊕
               </div>
               <h3 className="text-[34px] font-black tracking-tight text-white">
-                {isBs ? "How it works" : "How it works"}
+                How it works
               </h3>
             </div>
 
@@ -280,7 +314,10 @@ export default function HomePage() {
 
               <div className="mt-4 space-y-4">
                 {howItWorksRules.map((item) => (
-                  <div key={item} className="flex items-start gap-3 text-[18px] leading-8 text-zinc-200">
+                  <div
+                    key={item}
+                    className="flex items-start gap-3 text-[18px] leading-8 text-zinc-200"
+                  >
                     <span className="mt-1 text-xl text-zinc-300">◻</span>
                     <span>{item}</span>
                   </div>
@@ -295,7 +332,10 @@ export default function HomePage() {
 
               <div className="mt-4 space-y-4">
                 {howItWorksScoring.map((item) => (
-                  <div key={item} className="flex items-start gap-3 text-[18px] leading-8 text-zinc-200">
+                  <div
+                    key={item}
+                    className="flex items-start gap-3 text-[18px] leading-8 text-zinc-200"
+                  >
                     <span className="mt-1 text-xl text-zinc-300">◎</span>
                     <span>{item}</span>
                   </div>
@@ -305,31 +345,39 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section className="mx-auto w-full max-w-[1380px] grid gap-6 pb-4 xl:grid-cols-2">
-          <LeaderboardCard
-            title={isBs ? "You vs Friends" : "You vs Friends"}
-            rows={topLocalRows}
-            loading={false}
-            emptyText={isBs ? "Još nema lokalnih rezultata." : "No local results yet."}
-            positionLabel={formatOrdinal(localPosition || 0, isBs)}
-            showYouRow={!!localYouRow && (localPosition || 0) > 8}
-            youRow={localYouRow}
-          />
+        <div className="mx-auto w-full max-w-[1200px]">
+          <section className="grid gap-6 pb-4 xl:grid-cols-2">
+            <LeaderboardCard
+              title="Your vs Friends"
+              rows={topLocalRows}
+              loading={false}
+              emptyText={
+                isBs ? "Još nema lokalnih rezultata." : "No local results yet."
+              }
+              positionLabel={formatOrdinal(localPosition || 0, isBs)}
+              showYouRow={!!localYouRow && (localPosition || 0) > 8}
+              youRow={localYouRow}
+            />
 
-          <LeaderboardCard
-            title={isBs ? "Worldwide Score" : "Worldwide Score"}
-            rows={globalRows}
-            loading={globalLoading}
-            emptyText={isBs ? "Globalni ranking još je prazan." : "Global leaderboard is still empty."}
-            positionLabel={formatOrdinal(globalPosition || 0, isBs)}
-            showYouRow={!!globalYouRow && (globalPosition || 0) > 8}
-            youRow={globalYouRow}
-          />
-        </section>
+            <LeaderboardCard
+              title="Worldwide Score"
+              rows={globalRows}
+              loading={globalLoading}
+              emptyText={
+                isBs
+                  ? "Globalni ranking još je prazan."
+                  : "Global leaderboard is still empty."
+              }
+              positionLabel={formatOrdinal(globalPosition || 0, isBs)}
+              showYouRow={!!globalYouRow && (globalPosition || 0) > 8}
+              youRow={globalYouRow}
+            />
+          </section>
 
-        <footer className="mt-auto pb-2 pt-1 text-center text-xs tracking-[0.14em] text-zinc-500">
-          © ZEDA&apos;S Group LTD | AK Solutions
-        </footer>
+          <footer className="mt-auto pb-2 pt-1 text-center text-xs tracking-[0.14em] text-zinc-500">
+            © ZEDA&apos;S Group LTD | AK Solutions
+          </footer>
+        </div>
       </div>
     </main>
   );
