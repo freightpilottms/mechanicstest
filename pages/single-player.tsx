@@ -47,6 +47,8 @@ const modes = [
   },
 ] as const;
 
+type ModeOption = (typeof modes)[number];
+
 function formatOrdinal(n: number, isBs: boolean) {
   if (!n || n < 1) return isBs ? "Ti: —" : "You: —";
 
@@ -62,22 +64,127 @@ function formatOrdinal(n: number, isBs: boolean) {
   return `${isBs ? "Ti" : "You"}: ${n}${suffix}`;
 }
 
+function getBestPlayerPosition(rows: LeaderboardEntry[], playerName = "You") {
+  const normalized = playerName.trim().toLowerCase();
+  const index = rows.findIndex(
+    (row) => row.player_name.trim().toLowerCase() === normalized
+  );
+  return index >= 0 ? index + 1 : null;
+}
+
+function getYouRow(rows: LeaderboardEntry[], playerName = "You") {
+  const normalized = playerName.trim().toLowerCase();
+  return (
+    rows.find((row) => row.player_name.trim().toLowerCase() === normalized) ||
+    null
+  );
+}
+
+function LeaderboardCard({
+  title,
+  rows,
+  loading,
+  emptyText,
+  positionLabel,
+  showYouRow = false,
+  youRow,
+}: {
+  title: string;
+  rows: LeaderboardEntry[];
+  loading: boolean;
+  emptyText: string;
+  positionLabel: string;
+  showYouRow?: boolean;
+  youRow?: LeaderboardEntry | null;
+}) {
+  return (
+    <div className="h-full w-full min-w-0 rounded-[28px] border border-white/10 bg-white/5 p-5 backdrop-blur-md sm:p-6">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-[28px] font-black tracking-tight text-white">
+          {title}
+        </h3>
+
+        <div className="whitespace-nowrap rounded-full border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-300">
+          {positionLabel}
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="mt-5 rounded-2xl border border-white/8 bg-black/20 px-4 py-6 text-sm text-zinc-400">
+          Loading...
+        </div>
+      ) : rows.length === 0 ? (
+        <div className="mt-5 rounded-2xl border border-white/8 bg-black/20 px-4 py-6 text-sm text-zinc-400">
+          {emptyText}
+        </div>
+      ) : (
+        <>
+          <div className="mt-5 space-y-2">
+            {rows.map((row, index) => (
+              <div
+                key={`${row.player_key}-${row.played_at}-${index}`}
+                className="grid grid-cols-[32px_minmax(0,1fr)_auto] items-center gap-3 border-b border-white/8 px-2 py-3 last:border-b-0"
+              >
+                <div className="text-xl font-semibold text-white">
+                  {index + 1}
+                </div>
+
+                <div className="min-w-0">
+                  <p className="truncate text-[15px] font-bold text-white">
+                    {row.player_name}
+                  </p>
+                  <p className="truncate text-sm text-zinc-400">
+                    {row.rank_label}
+                  </p>
+                </div>
+
+                <div className="text-right text-[15px] font-black text-orange-400">
+                  {row.avg_score.toFixed(1)}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {showYouRow && youRow ? (
+            <div className="mt-4 grid grid-cols-[32px_minmax(0,1fr)_auto] items-center gap-3 rounded-2xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-4">
+              <div className="text-2xl font-semibold text-emerald-300">
+                {positionLabel.replace(/^.*:\s*/, "").replace(/[a-z]+$/i, "")}
+              </div>
+
+              <div className="min-w-0">
+                <p className="truncate text-[16px] font-black text-white">
+                  {youRow.player_name}
+                </p>
+                <p className="truncate text-sm text-zinc-300">
+                  {youRow.rank_label}
+                </p>
+              </div>
+
+              <div className="text-right text-[18px] font-black text-emerald-300">
+                {youRow.avg_score.toFixed(1)}
+              </div>
+            </div>
+          ) : null}
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function SinglePlayerPage() {
   const router = useRouter();
-  const { locale } = useLocale();
+  const { locale, setLocale } = useLocale();
   const isBs = locale === "bs";
 
-  // ✅ DEFAULT MODE = ALL
-  type ModeOption = (typeof modes)[number];
-
   const [selected, setSelected] = useState<ModeOption>(modes[0]);
-
-  // leaderboard state
   const [topLocalRows, setTopLocalRows] = useState<LeaderboardEntry[]>([]);
+  const [allLocalRows, setAllLocalRows] = useState<LeaderboardEntry[]>([]);
   const [globalRows, setGlobalRows] = useState<LeaderboardEntry[]>([]);
   const [globalLoading, setGlobalLoading] = useState(true);
 
   useEffect(() => {
+    const localAll = getLocalLeaderboard();
+    setAllLocalRows(localAll);
     setTopLocalRows(getTopLocalLeaderboard(8));
   }, []);
 
@@ -90,33 +197,62 @@ export default function SinglePlayerPage() {
         const res = await fetch("/api/leaderboard");
         const data = await res.json();
 
-        if (!cancelled && data?.ok) {
-          setGlobalRows(data.rows || []);
+        if (!cancelled && res.ok && data?.ok && Array.isArray(data.rows)) {
+          setGlobalRows(data.rows);
         }
       } catch {
-        setGlobalRows([]);
+        if (!cancelled) setGlobalRows([]);
       } finally {
-        setGlobalLoading(false);
+        if (!cancelled) setGlobalLoading(false);
       }
     }
 
     loadGlobal();
+
     return () => {
       cancelled = true;
     };
   }, []);
+
+  const localPosition = useMemo(
+    () => getBestPlayerPosition(allLocalRows),
+    [allLocalRows]
+  );
+  const globalPosition = useMemo(
+    () => getBestPlayerPosition(globalRows),
+    [globalRows]
+  );
+
+  const localYouRow = useMemo(() => getYouRow(allLocalRows), [allLocalRows]);
+  const globalYouRow = useMemo(() => getYouRow(globalRows), [globalRows]);
 
   function startGame() {
     router.push(`/test?mode=${selected.key}`);
   }
 
   const rules = isBs
-    ? ["10 pitanja", "3 minute po pitanju", "Rezultati na kraju"]
-    : ["10 questions", "3 minutes per question", "Results at the end"];
+    ? [
+        "10 pitanja po testu",
+        "4 minute po pitanju",
+        "Rezultati se prikazuju tek na kraju",
+      ]
+    : [
+        "10 questions per test",
+        "4 minutes per question",
+        "Results are shown only at the end",
+      ];
 
   const scoring = isBs
-    ? ["Glavni uzrok = max bodovi", "Djelimično = manje", "Extra = bonus"]
-    : ["Main cause = max points", "Partial = reduced", "Extra = bonus"];
+    ? [
+        "Glavni uzrok nosi najviše bodova",
+        "Djelimično tačan odgovor nosi manje bodova",
+        "Dodatno objašnjenje može donijeti bonus",
+      ]
+    : [
+        "Main cause gives the highest score",
+        "Partially correct answers give fewer points",
+        "Extra explanation can add a bonus",
+      ];
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#090b10] text-white">
@@ -127,18 +263,51 @@ export default function SinglePlayerPage() {
       <div className="absolute inset-0 bg-black/40" />
 
       <div className="relative mx-auto flex min-h-screen w-full max-w-7xl flex-col px-4 py-3 sm:px-6 lg:px-8">
-        
-        {/* HEADER */}
         <header className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur-md">
-          <Link href="/" className="text-sm">← Back</Link>
-          <h1 className="font-bold">Single Player</h1>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/"
+              className="rounded-xl border border-white/10 bg-black/20 px-4 py-2 text-sm font-semibold text-zinc-200 transition hover:bg-white/10"
+            >
+              ← {isBs ? "Nazad" : "Back"}
+            </Link>
+
+            <div>
+              <p className="text-[11px] font-semibold tracking-[0.28em] text-orange-400">
+                AI GARAGE
+              </p>
+              <h1 className="mt-1 text-xl font-bold tracking-tight sm:text-2xl">
+                Single Player
+              </h1>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/20 p-1">
+            <button
+              onClick={() => setLocale("en")}
+              className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${
+                locale === "en"
+                  ? "bg-orange-500 text-black"
+                  : "text-zinc-300 hover:bg-white/10"
+              }`}
+            >
+              EN
+            </button>
+            <button
+              onClick={() => setLocale("bs")}
+              className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${
+                locale === "bs"
+                  ? "bg-orange-500 text-black"
+                  : "text-zinc-300 hover:bg-white/10"
+              }`}
+            >
+              BS
+            </button>
+          </div>
         </header>
 
-        {/* MAIN */}
         <div className="mx-auto w-full max-w-[1280px]">
           <section className="grid gap-6 py-6 xl:grid-cols-2">
-
-            {/* LEFT */}
             <div className="rounded-[30px] border border-white/10 bg-white/5 p-6 backdrop-blur-md">
               <h2 className="text-3xl font-black">
                 {isBs ? "Odaberi mod" : "Choose Mode"}
@@ -152,14 +321,16 @@ export default function SinglePlayerPage() {
                     <button
                       key={m.key}
                       onClick={() => setSelected(m)}
-                      className={`rounded-2xl border p-4 text-left ${
+                      className={`rounded-2xl border p-4 text-left transition ${
                         active
                           ? "border-orange-500 bg-white/10"
-                          : "border-white/10 bg-white/5"
+                          : "border-white/10 bg-white/5 hover:bg-white/10"
                       }`}
                     >
                       <div className="flex gap-4">
-                        <div className={`h-12 w-12 rounded-xl bg-gradient-to-br ${m.color} flex items-center justify-center`}>
+                        <div
+                          className={`flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br ${m.color}`}
+                        >
                           {m.icon}
                         </div>
 
@@ -178,7 +349,6 @@ export default function SinglePlayerPage() {
               </div>
             </div>
 
-            {/* RIGHT */}
             <div className="rounded-[30px] border border-white/10 bg-white/5 p-6 backdrop-blur-md">
               <h2 className="text-3xl font-black">
                 {isBs ? selected.titleBs : selected.titleEn}
@@ -189,8 +359,10 @@ export default function SinglePlayerPage() {
               </p>
 
               <div className="mt-6">
-                <p className="text-xs text-orange-400">Rules</p>
-                <ul className="mt-2 text-sm text-zinc-300 space-y-1">
+                <p className="text-xs uppercase tracking-[0.2em] text-orange-400">
+                  {isBs ? "Pravila" : "Rules"}
+                </p>
+                <ul className="mt-3 space-y-2 text-sm text-zinc-300">
                   {rules.map((r) => (
                     <li key={r}>• {r}</li>
                   ))}
@@ -198,8 +370,10 @@ export default function SinglePlayerPage() {
               </div>
 
               <div className="mt-6">
-                <p className="text-xs text-orange-400">Scoring</p>
-                <ul className="mt-2 text-sm text-zinc-300 space-y-1">
+                <p className="text-xs uppercase tracking-[0.2em] text-orange-400">
+                  {isBs ? "Bodovanje" : "Scoring"}
+                </p>
+                <ul className="mt-3 space-y-2 text-sm text-zinc-300">
                   {scoring.map((s) => (
                     <li key={s}>• {s}</li>
                   ))}
@@ -208,17 +382,16 @@ export default function SinglePlayerPage() {
 
               <button
                 onClick={startGame}
-                className="mt-8 w-full rounded-2xl bg-orange-500 py-4 font-bold text-black"
+                className="mt-8 w-full rounded-2xl bg-orange-500 py-4 font-bold text-black transition hover:bg-orange-400"
               >
                 {isBs ? "Započni test" : "Start Test"}
               </button>
             </div>
           </section>
 
-          {/* LEADERBOARD */}
           <section className="grid gap-6 pb-4 xl:grid-cols-2">
             <LeaderboardCard
-              title="You vs Friends"
+              title="Your vs Friends"
               rows={topLocalRows}
               loading={false}
               emptyText={
@@ -244,8 +417,7 @@ export default function SinglePlayerPage() {
             />
           </section>
 
-          {/* FOOTER */}
-          <footer className="text-center text-xs text-zinc-500">
+          <footer className="pb-2 pt-1 text-center text-xs tracking-[0.14em] text-zinc-500">
             © ZEDA&apos;S Group LTD | AK Solutions
           </footer>
         </div>
