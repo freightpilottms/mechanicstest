@@ -305,7 +305,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section className="grid gap-6 pb-4 xl:grid-cols-2">
+        <section className="mx-auto w-full max-w-[1380px] grid gap-6 pb-4 xl:grid-cols-2">
           <LeaderboardCard
             title={isBs ? "You vs Friends" : "You vs Friends"}
             rows={topLocalRows}
