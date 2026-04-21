@@ -822,7 +822,7 @@ export default function TestPage() {
 
                         {item.question.answer_why_no_code ? (
                           <PreviewCard
-                            title={isBs ? "Zašto ECU ne baca grešku" : "Why ECU May Not Set a Fault"}
+                            title={isBs ? "ECU ne pokazuje grešku" : "Why ECU May Not Set a Fault"}
                             content={item.question.answer_why_no_code}
                             buttonText={isBs ? "Prikaži više" : "See more"}
                             onOpen={() =>
@@ -948,7 +948,7 @@ export default function TestPage() {
               <div className="mt-8 grid grid-cols-3 gap-2 sm:gap-3">
                 <div className="rounded-xl border border-white/10 bg-black/20 p-3 sm:rounded-2xl sm:p-4">
                   <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-400 sm:text-xs sm:tracking-[0.2em]">
-                    {isBs ? "Pitanje" : "Question"}
+                    {isBs ? "Zadatak" : "Task"}
                   </p>
                   <p className="mt-1 text-xl font-black text-white sm:mt-2 sm:text-3xl">
                     {currentIndex + 1}/{questions.length}
@@ -1060,19 +1060,15 @@ export default function TestPage() {
                   </h3>
                 </div>
 
-                <div className="mt-7 rounded-2xl border border-white/10 bg-black/20 p-4 text-sm leading-6 text-zinc-300">
-                  {isBs
-                    ? "Upiši najvjerovatniji uzrok. Dodatno možeš navesti kako bi najlakše dokazao kvar."
-                    : "Write the most likely root cause. You can also add how you would best confirm the fault."}
-                </div>
-
                 {Array.isArray(currentQuestion?.questions) && currentQuestion.questions.length ? (
-                  <div className="mt-6 rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <div className="mt-7 rounded-2xl border border-white/10 bg-black/20 p-4">
                     <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
-                      {isBs ? "Pitanje" : "Question"}
+                      {isBs ? "Zadatak" : "Task"}
                     </p>
-                    <p className="mt-3 text-lg font-semibold leading-8 text-white">
-                      {currentQuestion.questions[0]}
+                    <p className="mt-3 text-sm leading-6 text-zinc-300">
+                      {isBs
+                        ? "Upiši najvjerovatniji uzrok. Dodatno možeš navesti kako bi najlakše dokazao kvar."
+                        : "Write the most likely root cause. You can also add how you would best confirm the fault."}
                     </p>
                   </div>
                 ) : null}
@@ -1081,11 +1077,7 @@ export default function TestPage() {
                   <textarea
                     value={currentAnswer}
                     onChange={(e) => updateAnswer(e.target.value)}
-                    placeholder={
-                      isBs
-                        ? "Upiši svoj odgovor ovdje..."
-                        : "Write your answer here..."
-                    }
+                    placeholder=""
                     className="min-h-[280px] w-full rounded-[24px] border border-white/10 bg-black/30 p-5 text-base leading-7 text-white outline-none transition placeholder:text-zinc-500 focus:border-orange-500/40 focus:bg-black/40"
                   />
                 </div>
