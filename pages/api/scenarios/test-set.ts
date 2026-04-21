@@ -4,7 +4,11 @@ import { getScenariosForMode } from "../../../lib/scenario-storage";
 type SupportedLocale = "en" | "bs";
 
 function getLocaleFromReq(req: NextApiRequest): SupportedLocale {
-  const raw = String(req.query.locale || req.query.lang || "en").toLowerCase();
+  const raw =
+    req.method === "POST"
+      ? String(req.body?.locale || req.body?.lang || "en").toLowerCase()
+      : String(req.query.locale || req.query.lang || "en").toLowerCase();
+
   return raw === "bs" ? "bs" : "en";
 }
 
@@ -23,6 +27,41 @@ type StoredScenario = {
   [key: string]: any;
 };
 
+function getCountFromReq(req: NextApiRequest): number {
+  const raw =
+    req.method === "POST"
+      ? Number(req.body?.count || 10)
+      : Number(req.query.count || 10);
+
+  return Math.max(1, Math.min(20, Number.isFinite(raw) ? raw : 10));
+}
+
+function getExcludeIdsFromReq(req: NextApiRequest): string[] {
+  const raw =
+    req.method === "POST"
+      ? req.body?.excludeIds
+      : req.query.excludeIds;
+
+  if (Array.isArray(raw)) {
+    return raw.map((x) => String(x)).filter(Boolean);
+  }
+
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.map((x) => String(x)).filter(Boolean);
+      }
+    } catch {
+      return raw
+        .split(",")
+        .map((x) => x.trim())
+        .filter(Boolean);
+    }
+  }
+
+  return [];
+}
 
 function scenarioText(item: StoredScenario): string {
   return [
@@ -52,19 +91,40 @@ function isMechanicallyCompatible(item: StoredScenario): boolean {
   const vehicle = String(item.vehicle || "").toLowerCase();
   const combined = `${platform} ${vehicle}`;
 
-  const looksDiesel = /\b(diesel|tdi|hdi|dci|jtd|cdi|crdi|multijet|duratorq|tddi|tdci|d-4d|dci|cdi)\b/.test(combined);
-  const looksPetrol = /\b(petrol|gasoline|tsi|tfsi|fsi|gdi|mpi|ecoboost|skyactiv-g|t-jet|vti)\b/.test(combined);
+  const looksDiesel =
+    /\b(diesel|tdi|hdi|dci|jtd|cdi|crdi|multijet|duratorq|tddi|tdci|d-4d)\b/.test(
+      combined
+    );
+  const looksPetrol =
+    /\b(petrol|gasoline|tsi|tfsi|fsi|gdi|mpi|ecoboost|skyactiv-g|t-jet|vti)\b/.test(
+      combined
+    );
   const beltEngine = /\b(belt|remen)\b/.test(combined);
   const chainEngine = /\b(chain|lanac)\b/.test(combined);
 
   if (beltEngine && /\b(chain|timing chain|lanac)\b/.test(text)) return false;
-  if (chainEngine && /\b(timing belt|zupcasti remen|remen razvoda|remen)\b/.test(text)) return false;
+  if (chainEngine && /\b(timing belt|zupcasti remen|remen razvoda|remen)\b/.test(text))
+    return false;
 
-  if (looksDiesel && /\b(spark plug|ignition coil|coil pack|svjecica|svjećica|bobina|throttle body)\b/.test(text)) return false;
-  if (looksPetrol && /\b(dpf|diesel particulate|common rail|high-pressure diesel pump|injector pump|adblue|glow plug|grijac|grijač)\b/.test(text)) return false;
+  if (
+    looksDiesel &&
+    /\b(spark plug|ignition coil|coil pack|svjecica|svjećica|bobina|throttle body)\b/.test(
+      text
+    )
+  )
+    return false;
+
+  if (
+    looksPetrol &&
+    /\b(dpf|diesel particulate|common rail|high-pressure diesel pump|injector pump|adblue|glow plug|grijac|grijač)\b/.test(
+      text
+    )
+  )
+    return false;
 
   return true;
 }
+
 function shuffle<T>(arr: T[]): T[] {
   const copy = [...arr];
   for (let i = copy.length - 1; i > 0; i -= 1) {
@@ -106,6 +166,13 @@ function filterByLocale(
   locale: SupportedLocale
 ): StoredScenario[] {
   return items.filter((item) => normalizeScenarioLocale(item) === locale);
+}
+
+function filterExcluded(
+  items: StoredScenario[],
+  excludeIds: Set<string>
+): StoredScenario[] {
+  return items.filter((item) => item?.id && !excludeIds.has(String(item.id)));
 }
 
 function pickBestCandidate(
@@ -211,7 +278,7 @@ function buildTestSet(
       (item) => item?.id && !usedIds.has(String(item.id))
     );
 
-    while (selected.length < count && remainingPool.length) {
+    while (selected.length < count) {
       const picked = pickBestCandidate(
         remainingPool,
         usedIds,
@@ -220,25 +287,59 @@ function buildTestSet(
       );
 
       if (!picked) break;
-      addScenario(selected, picked, usedIds, usedVehicles, usedRootCauses);
+      if (!addScenario(selected, picked, usedIds, usedVehicles, usedRootCauses)) break;
     }
   }
 
   return selected;
 }
 
+function buildFreshFirstTestSet(
+  allScenarios: StoredScenario[],
+  count: number,
+  excludeIds: Set<string>
+) {
+  const freshPool = filterExcluded(allScenarios, excludeIds);
+  const freshSelected = buildTestSet(freshPool, count);
+
+  if (freshSelected.length >= count) {
+    return {
+      selected: freshSelected,
+      usedFallback: false,
+      freshCount: freshSelected.length,
+    };
+  }
+
+  const selectedIds = new Set(
+    freshSelected.map((item) => String(item.id)).filter(Boolean)
+  );
+
+  const fallbackPool = allScenarios.filter(
+    (item) => item?.id && !selectedIds.has(String(item.id))
+  );
+
+  const needed = count - freshSelected.length;
+  const fallbackSelected = buildTestSet(fallbackPool, needed);
+
+  return {
+    selected: [...freshSelected, ...fallbackSelected].slice(0, count),
+    usedFallback: fallbackSelected.length > 0,
+    freshCount: freshSelected.length,
+  };
+}
+
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
-  if (req.method !== "GET") {
+  if (req.method !== "GET" && req.method !== "POST") {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
 
   try {
-    const rawCount = Number(req.query.count || 10);
-    const count = Math.max(1, Math.min(20, Number.isFinite(rawCount) ? rawCount : 10));
+    const count = getCountFromReq(req);
     const locale = getLocaleFromReq(req);
+    const excludeIds = new Set(getExcludeIdsFromReq(req));
 
     const allScenariosRaw = await getScenariosForMode("all", 500);
     const allScenarios = sortPool(uniqueById(allScenariosRaw)).filter(isMechanicallyCompatible);
@@ -252,14 +353,16 @@ export default async function handler(
 
     const localePool = filterByLocale(allScenarios, locale);
 
-    let selected = buildTestSet(localePool, count);
+    let selectedResult = buildFreshFirstTestSet(localePool, count, excludeIds);
     let usedLocale = locale;
 
-    if (selected.length < count && locale !== "en") {
+    if (selectedResult.selected.length < count && locale !== "en") {
       const englishPool = filterByLocale(allScenarios, "en");
-      selected = buildTestSet(englishPool, count);
+      selectedResult = buildFreshFirstTestSet(englishPool, count, excludeIds);
       usedLocale = "en";
     }
+
+    const selected = selectedResult.selected;
 
     if (!selected.length) {
       return res.status(400).json({
@@ -293,6 +396,9 @@ export default async function handler(
         uniqueRootCauses,
         requestedLocale: locale,
         usedLocale,
+        excludeIdsCount: excludeIds.size,
+        freshCount: selectedResult.freshCount,
+        usedFallback: selectedResult.usedFallback,
       },
     });
   } catch (e: any) {
