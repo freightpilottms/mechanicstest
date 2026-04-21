@@ -746,16 +746,7 @@ export default function TestPage() {
                         </div>
                       ) : null}
 
-                      {Array.isArray(item.question.questions) && item.question.questions.length ? (
-                        <div>
-                          <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
-                            {isBs ? "Zadatak" : "Task"}
-                          </p>
-                          <div className="mt-2 rounded-2xl border border-white/10 bg-black/20 p-4 text-zinc-100">
-                            {item.question.questions[0]}
-                          </div>
-                        </div>
-                      ) : null}
+                     
 
                       {renderList(item.question.symptoms) ? (
                         <div>
@@ -806,33 +797,47 @@ export default function TestPage() {
                         <p className="mt-3 text-zinc-200">{item.evaluation.feedback}</p>
                       </div>
 
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                          <p className="text-xs uppercase tracking-[0.22em] text-zinc-400">
-                            {isBs ? "Dijagnoza" : "Diagnosis"}
-                          </p>
-                          <p className="mt-2 text-2xl font-black text-white">
-                            {item.evaluation.diagnosisPercent}%
-                          </p>
-                        </div>
-                        <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                          <p className="text-xs uppercase tracking-[0.22em] text-zinc-400">
-                            {isBs ? "Bonus" : "Bonus"}
-                          </p>
-                          <p className="mt-2 text-2xl font-black text-white">
-                            +{item.evaluation.bonus}
-                          </p>
-                        </div>
-                      </div>
+                      <div className="grid gap-4 lg:grid-cols-3">
+  {item.question.answer_main ? (
+    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+      <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
+        {isBs ? "Najvjerovatniji uzrok" : "Most Likely Cause"}
+      </p>
+      <p className="mt-3 text-sm leading-6 text-zinc-200">
+        {item.question.answer_main}
+      </p>
+    </div>
+  ) : null}
 
-                      {item.evaluation.matchedCause ? (
-                        <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                          <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
-                            {isBs ? "Prepoznat uzrok" : "Matched Cause"}
-                          </p>
-                          <p className="mt-3 text-zinc-100">{item.evaluation.matchedCause}</p>
-                        </div>
-                      ) : null}
+  {item.question.answer_why_no_code ? (
+    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+      <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
+        {isBs ? "Zašto ECU ne baca grešku" : "Why ECU May Not Set a Fault"}
+      </p>
+      <p className="mt-3 text-sm leading-6 text-zinc-200">
+        {item.question.answer_why_no_code}
+      </p>
+    </div>
+  ) : null}
+
+  {Array.isArray(item.question.answer_proof) && item.question.answer_proof.length ? (
+    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+      <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
+        {isBs ? "Kako dokazati" : "How to Prove It"}
+      </p>
+      <ul className="mt-3 space-y-2 text-sm leading-6 text-zinc-200">
+        {item.question.answer_proof.map((proofItem, proofIndex) => (
+          <li
+            key={proofIndex}
+            className="rounded-xl border border-white/8 bg-white/5 px-3 py-2"
+          >
+            {proofItem}
+          </li>
+        ))}
+      </ul>
+    </div>
+  ) : null}
+</div>
                     </div>
                   </div>
                 </div>
@@ -876,211 +881,18 @@ export default function TestPage() {
           </div>
         </header>
 
-        <div className="mx-auto w-full max-w-[1280px] py-6">
-          <section className="grid gap-6 xl:grid-cols-[1fr_0.92fr]">
-            <div className="rounded-[30px] border border-white/10 bg-white/5 p-6 shadow-2xl backdrop-blur-md sm:p-8">
-              <div className="inline-flex items-center gap-2 rounded-full border border-orange-500/35 bg-orange-500/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-orange-300">
-                <span>🛠️</span>
-                <span>{isBs ? "Test u toku" : "Test in progress"}</span>
-              </div>
-
-              <h2 className="mt-6 text-4xl font-black leading-[0.95] tracking-tight sm:text-5xl">
-                {isBs ? "Dijagnosticiraj kvar" : "Diagnose the fault"}
-              </h2>
-
-              <p className="mt-4 text-lg leading-8 text-zinc-200">
-                {isBs
-                  ? "Napiši najvjerovatniji uzrok i po želji dodaj kako bi potvrdio kvar."
-                  : "Write the most likely root cause and optionally add how you would confirm it."}
-              </p>
-
-              <div className="mt-8 grid grid-cols-3 gap-2 sm:gap-3">
-  <div className="rounded-xl border border-white/10 bg-black/20 p-3 sm:rounded-2xl sm:p-4">
-    <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-400 sm:text-xs sm:tracking-[0.2em]">
-      {isBs ? "Pitanje" : "Question"}
-    </p>
-    <p className="mt-1 text-xl font-black text-white sm:mt-2 sm:text-3xl">
-      {currentIndex + 1}/{questions.length}
-    </p>
+        <div className="mx-auto w-full max-w-[1280px] py-6 overflow-visible">
+        <section className="grid items-start gap-6 xl:grid-cols-[1fr_0.92fr]">
+  <div className="rounded-[30px] border border-white/10 bg-white/5 p-6 shadow-2xl backdrop-blur-md sm:p-8">
+    ...
   </div>
 
-  <div className="rounded-xl border border-white/10 bg-black/20 p-3 sm:rounded-2xl sm:p-4">
-    <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-400 sm:text-xs sm:tracking-[0.2em]">
-      {isBs ? "Vrijeme" : "Timer"}
-    </p>
-    <p
-      className={`mt-1 text-xl font-black sm:mt-2 sm:text-3xl ${
-        timerCritical ? "text-red-300" : timerWarning ? "text-yellow-300" : "text-white"
-      }`}
-    >
-      {formatTime(timeLeft)}
-    </p>
-  </div>
-
-  <div className="rounded-xl border border-white/10 bg-black/20 p-3 sm:rounded-2xl sm:p-4">
-    <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-400 sm:text-xs sm:tracking-[0.2em]">
-      {isBs ? "Težina" : "Difficulty"}
-    </p>
-    <div
-      className={`mt-1 inline-flex rounded-full border px-3 py-1 text-xs font-bold sm:mt-2 sm:px-4 sm:py-2 sm:text-sm ${difficultyBadgeClasses(
-        currentQuestion!.difficulty
-      )}`}
-    >
-      {getDifficultyText(currentQuestion!.difficulty, isBs)}
+  <div className="xl:self-start">
+    <div className="rounded-[30px] border border-white/10 bg-white/5 p-6 backdrop-blur-md sm:p-7 xl:sticky xl:top-6">
+      ...
     </div>
   </div>
-</div>
-
-              <div className="mt-7">
-                <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-[0.2em] text-zinc-400">
-                  <span>{isBs ? "Napredak" : "Progress"}</span>
-                  <span>{Math.round(progress)}%</span>
-                </div>
-                <div className="mt-3 h-3 overflow-hidden rounded-full bg-white/10">
-                  <div
-                    className={`h-full rounded-full transition-all ${
-                      timerCritical
-                        ? "bg-red-400"
-                        : timerWarning
-                        ? "bg-yellow-400"
-                        : "bg-orange-500"
-                    }`}
-                    style={{ width: `${progress}%` }}
-                  />
-                </div>
-              </div>
-
-              <div className="mt-8 space-y-6">
-                {currentQuestion?.vehicle ? (
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
-                      {isBs ? "Vozilo" : "Vehicle"}
-                    </p>
-                    <p className="mt-2 text-2xl font-black text-white">{currentQuestion.vehicle}</p>
-                  </div>
-                ) : null}
-
-                {currentQuestion?.title ? (
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
-                      {isBs ? "Scenario" : "Scenario"}
-                    </p>
-                    <p className="mt-2 text-zinc-200">{currentQuestion.title}</p>
-                  </div>
-                ) : null}
-
-                
-
-                {Array.isArray(currentQuestion?.symptoms) && currentQuestion.symptoms.length ? (
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
-                      {isBs ? "Simptomi" : "Symptoms"}
-                    </p>
-                    <div className="mt-3">{renderList(currentQuestion.symptoms)}</div>
-                  </div>
-                ) : null}
-
-                {Array.isArray(currentQuestion?.driving) && currentQuestion.driving.length ? (
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
-                      {isBs ? "Tok vožnje" : "Driving"}
-                    </p>
-                    <div className="mt-3">{renderList(currentQuestion.driving)}</div>
-                  </div>
-                ) : null}
-
-                {Array.isArray(currentQuestion?.extra) && currentQuestion.extra.length ? (
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
-                      {isBs ? "Dodatno" : "Extra"}
-                    </p>
-                    <div className="mt-3">{renderList(currentQuestion.extra)}</div>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="rounded-[30px] border border-white/10 bg-white/5 p-6 backdrop-blur-md sm:p-7 xl:sticky xl:top-6 xl:self-start">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full border border-orange-500/30 bg-orange-500/10 text-orange-300">
-                  ⊕
-                </div>
-                <h3 className="text-[34px] font-black tracking-tight text-white">
-                  {isBs ? "Odgovor" : "Answer"}
-                </h3>
-              </div>
-
-              <div className="mt-7 rounded-2xl border border-white/10 bg-black/20 p-4 text-sm leading-6 text-zinc-300">
-                {isBs
-                  ? "Upiši najvjerovatniji uzrok. Dodatno možeš navesti kako bi najlakše dokazao kvar."
-                  : "Write the most likely root cause. You can also add how you would best confirm the fault."}
-              </div>
-
-              <div className="mt-6">
-                <textarea
-                  value={currentAnswer}
-                  onChange={(e) => updateAnswer(e.target.value)}
-                  placeholder={
-                    isBs
-                      ? "Upiši svoj odgovor ovdje..."
-                      : "Write your answer here..."
-                  }
-                  className="min-h-[280px] w-full rounded-[24px] border border-white/10 bg-black/30 p-5 text-base leading-7 text-white outline-none transition placeholder:text-zinc-500 focus:border-orange-500/40 focus:bg-black/40"
-                />
-              </div>
-
-              <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={handleQuit}
-                  className="rounded-2xl border border-white/12 bg-white/5 px-5 py-4 font-bold text-white transition hover:bg-white/10"
-                >
-                  {isBs ? "Odustani" : "Quit"}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => saveAndAdvance(false)}
-                  className="rounded-2xl bg-orange-500 px-5 py-4 font-bold text-black transition hover:bg-orange-400"
-                >
-                  {currentIndex === questions.length - 1
-                    ? isBs
-                      ? "Završi test"
-                      : "Finish Test"
-                    : isBs
-                    ? "Odgovori"
-                    : "Submit"}
-                </button>
-              </div>
-
-              <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                  <p className="text-xs uppercase tracking-[0.2em] text-zinc-400">
-                    {isBs ? "Vrijeme za pitanje" : "Question Time"}
-                  </p>
-                  <div className="mt-3 h-3 overflow-hidden rounded-full bg-white/10">
-                    <div
-                      className={`h-full rounded-full transition-all ${
-                        timerCritical
-                          ? "bg-red-400"
-                          : timerWarning
-                          ? "bg-yellow-400"
-                          : "bg-orange-500"
-                      }`}
-                      style={{ width: `${Math.max(0, Math.min(100, timerPercent))}%` }}
-                    />
-                  </div>
-                  <p className="mt-3 text-lg font-bold text-white">{formatTime(timeLeft)}</p>
-                </div>
-
-                <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm leading-6 text-zinc-300">
-                  {isBs
-                    ? "Ako vrijeme istekne, pitanje se automatski zaključava i prelaziš na sljedeće."
-                    : "If time runs out, the question locks automatically and moves to the next one."}
-                </div>
-              </div>
-            </div>
-          </section>
+</section>
 
           <footer className="pb-2 pt-4 text-center text-xs tracking-[0.14em] text-zinc-500">
             © ZEDA&apos;S Group LTD | AK Solutions
