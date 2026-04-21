@@ -1,48 +1,18 @@
 import Link from "next/link";
 import { useRouter } from "next/router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { DIFFICULTY_LABELS, TIME_LIMITS, type Difficulty } from "@/lib/mock-questions";
-
-type ScenarioQuestion = {
-  id: string;
-  brand: string;
-  platform_type: string;
-  category: string;
-  root_cause_id: string;
-  root_cause_label: string;
-  difficulty: Difficulty;
-  title: string;
-  vehicle: string;
-  symptoms: string[];
-  driving: string[];
-  extra: string[];
-  key_details: string[];
-  questions: string[];
-  hint: string[];
-  answer_main: string;
-  answer_why_no_code: string;
-  answer_proof: string[];
-  accepted_answers: string[];
-  partial_answers: string[];
-  scoring_notes?: Record<string, any>;
-  created_at?: string;
-  times_used?: number;
-};
-
-type AnswerState = {
-  answer: string;
-  timedOut: boolean;
-  timeSpent: number;
-};
-
-type AiEvaluation = {
-  score: number;
-  diagnosis_percent: number;
-  bonus: number;
-  verdict: "correct" | "very_close" | "partial" | "weak" | "wrong";
-  matched_cause: string;
-  reason_short: string;
-};
+import { type Locale, useLocale } from "@/lib/i18n";
+import {
+  buildTestSessionId,
+  clearActiveTestSession,
+  readActiveTestSession,
+  writeActiveTestSession,
+  type ActiveTestSession,
+  type AiEvaluation,
+  type AnswerState,
+  type ScenarioQuestion,
+} from "@/lib/test-session";
 
 type EvaluatedResult = {
   score: number;
@@ -103,10 +73,17 @@ function buildLocalFallbackEvaluation(
   };
 }
 
+function getRemainingSeconds(deadlineAt: number, fallbackTimeLeft: number) {
+  if (!deadlineAt) return fallbackTimeLeft;
+  return Math.max(0, Math.ceil((deadlineAt - Date.now()) / 1000));
+}
+
 export default function TestPage() {
   const router = useRouter();
-  const { lang = "en" } = router.query;
-  const isBs = String(lang) === "bs";
+  const { locale, setLocale } = useLocale();
+  const routeLang = router.query.lang;
+  const testMode = String(router.query.mode || "all");
+  const isBs = locale === "bs";
 
   const [questions, setQuestions] = useState<ScenarioQuestion[]>([]);
   const [loading, setLoading] = useState(true);
@@ -115,10 +92,24 @@ export default function TestPage() {
   const [answers, setAnswers] = useState<AnswerState[]>([]);
   const [finished, setFinished] = useState(false);
   const [timeLeft, setTimeLeft] = useState(0);
+  const [questionDeadlineAt, setQuestionDeadlineAt] = useState(0);
   const [timerReady, setTimerReady] = useState(false);
   const [aiResults, setAiResults] = useState<(AiEvaluation | null)[]>([]);
   const [evaluating, setEvaluating] = useState(false);
   const [showFloatingTimer, setShowFloatingTimer] = useState(false);
+
+  const sessionIdRef = useRef(buildTestSessionId(testMode, locale));
+
+  useEffect(() => {
+    if (typeof routeLang !== "string") return;
+    if ((routeLang === "en" || routeLang === "bs") && routeLang !== locale) {
+      setLocale(routeLang as Locale);
+    }
+  }, [routeLang, locale, setLocale]);
+
+  useEffect(() => {
+    sessionIdRef.current = buildTestSessionId(testMode, locale);
+  }, [testMode, locale]);
 
   useEffect(() => {
     let cancelled = false;
@@ -128,8 +119,35 @@ export default function TestPage() {
         setLoading(true);
         setLoadError("");
 
-        const locale = String(lang || "en");
-        const res = await fetch(`/api/scenarios/test-set?count=10&locale=${encodeURIComponent(locale)}`);
+        const expectedSessionId = buildTestSessionId(testMode, locale);
+        const existingSession = readActiveTestSession();
+
+        if (
+          existingSession &&
+          !existingSession.finished &&
+          existingSession.sessionId === expectedSessionId &&
+          Array.isArray(existingSession.questions) &&
+          existingSession.questions.length
+        ) {
+          if (cancelled) return;
+
+          setQuestions(existingSession.questions);
+          setAnswers(existingSession.answers);
+          setAiResults(existingSession.aiResults);
+          setCurrentIndex(existingSession.currentIndex);
+          setFinished(existingSession.finished);
+          setEvaluating(existingSession.evaluating);
+          setQuestionDeadlineAt(existingSession.questionDeadlineAt);
+          setTimeLeft(
+            getRemainingSeconds(existingSession.questionDeadlineAt, existingSession.timeLeft)
+          );
+          setTimerReady(true);
+          return;
+        }
+
+        const res = await fetch(
+          `/api/scenarios/test-set?count=10&locale=${encodeURIComponent(locale)}`
+        );
         const data = await res.json();
 
         if (!res.ok || !data?.ok || !Array.isArray(data?.scenarios)) {
@@ -138,17 +156,25 @@ export default function TestPage() {
 
         if (cancelled) return;
 
-        setQuestions(data.scenarios);
-        setAnswers(
-          data.scenarios.map(() => ({
-            answer: "",
-            timedOut: false,
-            timeSpent: 0,
-          }))
-        );
-        setAiResults(data.scenarios.map(() => null));
+        const nextQuestions = data.scenarios as ScenarioQuestion[];
+        const nextAnswers = nextQuestions.map(() => ({
+          answer: "",
+          timedOut: false,
+          timeSpent: 0,
+        }));
+        const nextAiResults = nextQuestions.map(() => null);
+        const firstTimeLimit = nextQuestions[0] ? TIME_LIMITS[nextQuestions[0].difficulty] : 0;
+        const deadlineAt = Date.now() + firstTimeLimit * 1000;
+
+        setQuestions(nextQuestions);
+        setAnswers(nextAnswers);
+        setAiResults(nextAiResults);
         setCurrentIndex(0);
         setFinished(false);
+        setEvaluating(false);
+        setQuestionDeadlineAt(deadlineAt);
+        setTimeLeft(firstTimeLimit);
+        setTimerReady(true);
       } catch (err: any) {
         if (cancelled) return;
         setLoadError(String(err?.message || err || "Unknown error"));
@@ -157,12 +183,13 @@ export default function TestPage() {
       }
     }
 
+    if (!router.isReady) return;
     loadTestSet();
 
     return () => {
       cancelled = true;
     };
-  }, [lang]);
+  }, [router.isReady, testMode, locale]);
 
   const currentQuestion = questions[currentIndex];
 
@@ -182,38 +209,92 @@ export default function TestPage() {
   }, [finished, currentIndex]);
 
   useEffect(() => {
-    if (!currentQuestion || finished) return;
-
-    setTimerReady(false);
-    setTimeLeft(TIME_LIMITS[currentQuestion.difficulty]);
-
-    const id = window.setTimeout(() => {
+    if (!currentQuestion || finished || loading) return;
+    if (!questionDeadlineAt) {
+      const nextDeadlineAt = Date.now() + TIME_LIMITS[currentQuestion.difficulty] * 1000;
+      setQuestionDeadlineAt(nextDeadlineAt);
+      setTimeLeft(TIME_LIMITS[currentQuestion.difficulty]);
       setTimerReady(true);
-    }, 0);
+      return;
+    }
 
-    return () => window.clearTimeout(id);
-  }, [currentIndex, currentQuestion, finished]);
+    setTimeLeft(getRemainingSeconds(questionDeadlineAt, TIME_LIMITS[currentQuestion.difficulty]));
+    setTimerReady(true);
+  }, [currentQuestion, finished, loading, questionDeadlineAt]);
 
   useEffect(() => {
     if (!currentQuestion || finished || !timerReady) return;
 
-    if (timeLeft <= 0) {
-      saveAndAdvance(true);
-      return;
-    }
+    const syncTimer = () => {
+      const remaining = getRemainingSeconds(
+        questionDeadlineAt,
+        TIME_LIMITS[currentQuestion.difficulty]
+      );
+      setTimeLeft(remaining);
+      if (remaining <= 0) {
+        saveAndAdvance(true);
+        return true;
+      }
+      return false;
+    };
+
+    if (syncTimer()) return;
 
     const timer = window.setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
-          window.clearInterval(timer);
-          return 0;
-        }
-        return prev - 1;
-      });
+      syncTimer();
     }, 1000);
 
     return () => window.clearInterval(timer);
-  }, [timeLeft, currentQuestion, finished, timerReady]);
+  }, [currentQuestion, finished, timerReady, questionDeadlineAt]);
+
+  useEffect(() => {
+    if (loading || !questions.length || finished) return;
+
+    const session: ActiveTestSession = {
+      sessionId: sessionIdRef.current,
+      mode: testMode,
+      locale,
+      questions,
+      answers,
+      aiResults,
+      currentIndex,
+      timeLeft,
+      questionDeadlineAt,
+      finished,
+      evaluating,
+      updatedAt: Date.now(),
+    };
+
+    writeActiveTestSession(session);
+  }, [
+    loading,
+    questions,
+    finished,
+    testMode,
+    locale,
+    answers,
+    aiResults,
+    currentIndex,
+    timeLeft,
+    questionDeadlineAt,
+    evaluating,
+  ]);
+
+  useEffect(() => {
+    if (!finished) return;
+    clearActiveTestSession();
+  }, [finished]);
+
+  useEffect(() => {
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (finished || loading) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [finished, loading]);
 
   function updateAnswer(value: string) {
     setAnswers((prev) => {
@@ -230,7 +311,8 @@ export default function TestPage() {
     if (!currentQuestion) return;
 
     const allowed = TIME_LIMITS[currentQuestion.difficulty];
-    const spent = Math.max(0, Math.min(allowed, allowed - timeLeft));
+    const remaining = getRemainingSeconds(questionDeadlineAt, timeLeft);
+    const spent = Math.max(0, Math.min(allowed, allowed - remaining));
 
     setAnswers((prev) => {
       const next = [...prev];
@@ -245,11 +327,19 @@ export default function TestPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
 
     if (currentIndex < questions.length - 1) {
-      setCurrentIndex((prev) => prev + 1);
+      const nextIndex = currentIndex + 1;
+      const nextQuestion = questions[nextIndex];
+      const nextTimeLimit = nextQuestion ? TIME_LIMITS[nextQuestion.difficulty] : 0;
+      setCurrentIndex(nextIndex);
+      setQuestionDeadlineAt(Date.now() + nextTimeLimit * 1000);
+      setTimeLeft(nextTimeLimit);
+      setTimerReady(true);
       return;
     }
 
     setFinished(true);
+    setQuestionDeadlineAt(0);
+    setTimeLeft(0);
     setTimeout(() => {
       evaluateAllAnswers();
     }, 0);
@@ -258,7 +348,8 @@ export default function TestPage() {
   function handleQuit() {
     const confirmed = window.confirm(isBs ? "Tako lako odustaješ?" : "Giving up that easily?");
     if (!confirmed) return;
-    router.push(isBs ? "/single-player?lang=bs" : "/single-player?lang=en");
+    clearActiveTestSession();
+    router.push("/single-player");
   }
 
   async function evaluateAllAnswers() {
@@ -302,7 +393,7 @@ export default function TestPage() {
     }
   }
 
-  const progress = questions.length ? ((currentIndex + 1) / questions.length) * 100 : 0;
+const progress = questions.length ? ((currentIndex + 1) / questions.length) * 100 : 0;
   const currentAnswer = answers[currentIndex]?.answer || "";
   const currentTimeLimit = currentQuestion ? TIME_LIMITS[currentQuestion.difficulty] : 0;
   const timerPercent = currentTimeLimit ? (timeLeft / currentTimeLimit) * 100 : 0;
@@ -382,7 +473,10 @@ export default function TestPage() {
             <div className="mt-6 flex gap-3">
               <button
                 type="button"
-                onClick={() => window.location.reload()}
+                onClick={() => {
+                  clearActiveTestSession();
+                  router.replace(`/test?mode=${encodeURIComponent(testMode)}`);
+                }}
                 className="rounded-2xl bg-orange-500 px-5 py-3 flex-1 font-bold text-black transition hover:bg-orange-400"
               >
                 {isBs ? "Pokušaj ponovo" : "Try Again"}
@@ -555,7 +649,7 @@ export default function TestPage() {
 
             <div className="mt-8 flex flex-wrap gap-3">
               <Link
-                href={isBs ? "/single-player?lang=bs" : "/single-player?lang=en"}
+                href="/single-player"
                 className="rounded-2xl bg-orange-500 px-5 py-3 flex-1 font-bold text-black transition hover:bg-orange-400"
               >
                 {isBs ? "Nazad na meni" : "Back to menu"}
@@ -563,7 +657,10 @@ export default function TestPage() {
 
               <button
                 type="button"
-                onClick={() => window.location.reload()}
+                onClick={() => {
+                  clearActiveTestSession();
+                  router.replace(`/test?mode=${encodeURIComponent(testMode)}`);
+                }}
                 className="rounded-2xl border border-white/10 bg-black/20 px-5 py-3 flex-1 font-bold text-zinc-100 transition hover:bg-white/10"
               >
                 {isBs ? "Pokreni novi test" : "Start new test"}

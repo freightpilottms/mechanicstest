@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
-import { getMessages, type Locale } from "@/lib/i18n";
+import { useMemo } from "react";
+import { getMessages, useLocale } from "@/lib/i18n";
 import Link from "next/link";
+
 const modes = [
   { key: "all", color: "from-orange-500 to-amber-400" },
   { key: "eu", color: "from-sky-500 to-cyan-400" },
@@ -9,7 +10,7 @@ const modes = [
 ] as const;
 
 export default function HomePage() {
-  const [locale, setLocale] = useState<Locale>("en");
+  const { locale, setLocale } = useLocale();
   const t = useMemo(() => getMessages(locale), [locale]);
 
   const modeLabels = {
@@ -75,12 +76,12 @@ export default function HomePage() {
               </p>
 
               <div className="mt-8 grid gap-3 sm:max-w-md">
-              <Link
-  href="/single-player"
-  className="rounded-2xl bg-orange-500 px-5 py-4 text-center text-base font-bold text-black transition hover:bg-orange-400"
->
-  {t.startSingle}
-</Link>
+                <Link
+                  href="/single-player"
+                  className="rounded-2xl bg-orange-500 px-5 py-4 text-center text-base font-bold text-black transition hover:bg-orange-400"
+                >
+                  {t.startSingle}
+                </Link>
 
                 <button className="rounded-2xl border border-white/12 bg-white/5 px-5 py-4 text-base font-bold text-white transition hover:bg-white/10">
                   {t.playFriends}

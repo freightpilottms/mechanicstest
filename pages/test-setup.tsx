@@ -2,10 +2,12 @@ import Link from "next/link";
 import { useMemo } from "react";
 import { useRouter } from "next/router";
 import { getQuestionsForMode, TIME_LIMITS } from "@/lib/mock-questions";
+import { useLocale } from "@/lib/i18n";
 
 export default function TestSetupPage() {
   const router = useRouter();
-  const { mode = "all", lang = "en" } = router.query;
+  const { mode = "all" } = router.query;
+  const { locale } = useLocale();
 
   const questions = useMemo(() => getQuestionsForMode(String(mode)), [mode]);
   const totalSeconds = useMemo(
@@ -22,7 +24,7 @@ export default function TestSetupPage() {
   }, [questions]);
 
   const totalMinutes = Math.ceil(totalSeconds / 60);
-  const isBs = String(lang) === "bs";
+  const isBs = locale === "bs";
 
   return (
     <main className="min-h-screen bg-[#0a0d12] px-3 py-4 text-white sm:px-4 sm:py-6 lg:px-6">
@@ -46,7 +48,7 @@ export default function TestSetupPage() {
           </div>
 
           <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-zinc-300">
-            <strong>{isBs ? "Jezik" : "Language"}:</strong> {String(lang).toUpperCase()}
+            <strong>{isBs ? "Jezik" : "Language"}:</strong> {locale.toUpperCase()}
           </div>
 
           <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-zinc-300">
@@ -60,13 +62,13 @@ export default function TestSetupPage() {
 
         <div className="mt-6 grid gap-3 sm:grid-cols-3">
           <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">
-            <strong>{isBs ? "Lako" : "Easy"}:</strong> {difficultyBreakdown.easy} × 3 {isBs ? "min" : "min"}
+            <strong>{isBs ? "Lako" : "Easy"}:</strong> {difficultyBreakdown.easy} × 4 {isBs ? "min" : "min"}
           </div>
           <div className="rounded-2xl border border-sky-500/20 bg-sky-500/10 px-4 py-3 text-sm text-sky-300">
-            <strong>{isBs ? "Srednje" : "Medium"}:</strong> {difficultyBreakdown.medium} × 3 {isBs ? "min" : "min"}
+            <strong>{isBs ? "Srednje" : "Medium"}:</strong> {difficultyBreakdown.medium} × 4 {isBs ? "min" : "min"}
           </div>
           <div className="rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 py-3 text-sm text-orange-300">
-            <strong>{isBs ? "Teško" : "Hard"}:</strong> {difficultyBreakdown.hard} × 3 {isBs ? "min" : "min"}
+            <strong>{isBs ? "Teško" : "Hard"}:</strong> {difficultyBreakdown.hard} × 4 {isBs ? "min" : "min"}
           </div>
         </div>
 
@@ -77,7 +79,7 @@ export default function TestSetupPage() {
         </div>
 
         <Link
-          href={`/test?mode=${String(mode)}&lang=${String(lang)}`}
+          href={`/test?mode=${String(mode)}`}
           className="mt-8 inline-flex w-full items-center justify-center rounded-2xl bg-orange-500 px-5 py-4 text-base font-bold text-black transition hover:bg-orange-400"
         >
           {isBs ? "Započni test" : "Start Test"}

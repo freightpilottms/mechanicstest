@@ -32,9 +32,9 @@ export type MockQuestion = {
 };
 
 export const TIME_LIMITS: Record<Difficulty, number> = {
-  easy: 180,
-  medium: 180,
-  hard: 180,
+  easy: 240,
+  medium: 240,
+  hard: 240,
 };
 
 export const DIFFICULTY_LABELS = {

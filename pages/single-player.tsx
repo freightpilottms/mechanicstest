@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import { getMessages, type Locale } from "@/lib/i18n";
+import { useState } from "react";
+import { useLocale } from "@/lib/i18n";
 
 const modes = [
   {
@@ -38,10 +38,8 @@ const modes = [
 ] as const;
 
 export default function SinglePlayerPage() {
-  const [locale, setLocale] = useState<Locale>("en");
+  const { locale, setLocale } = useLocale();
   const [selectedMode, setSelectedMode] = useState<string>("all");
-
-  const t = useMemo(() => getMessages(locale), [locale]);
 
   return (
     <main className="min-h-screen bg-[#0a0d12] text-white">
@@ -155,7 +153,7 @@ export default function SinglePlayerPage() {
             </div>
 
             <Link
-              href={`/test-setup?mode=${selectedMode}&lang=${locale}`}
+              href={`/test-setup?mode=${selectedMode}`}
               className="mt-8 inline-flex w-full items-center justify-center rounded-2xl bg-orange-500 px-5 py-4 text-base font-bold text-black transition hover:bg-orange-400"
             >
               {locale === "en" ? "Start 10 Questions" : "Pokreni 10 pitanja"}
