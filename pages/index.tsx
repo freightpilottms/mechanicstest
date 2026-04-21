@@ -271,7 +271,7 @@ export default function HomePage() {
                 <p className="mt-4 max-w-2xl text-xl leading-8 text-zinc-200">
                   {isBs
                     ? "Dijagnosticiraj kvar, povećaj svoj rank i dokaži znanje."
-                    : "Diagnose the fault, increase your rank and prove knowledge."}
+                    : "Diagnose faults, increase your rank and prove knowledge."}
                 </p>
 
                 <div className="mt-8 grid gap-4 sm:max-w-xl">
