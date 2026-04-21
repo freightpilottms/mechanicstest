@@ -10,6 +10,7 @@ import {
 
 function formatOrdinal(n: number, isBs: boolean) {
   if (!n || n < 1) return isBs ? "Ti: —" : "You: —";
+
   const suffix =
     n % 10 === 1 && n % 100 !== 11
       ? "st"
@@ -18,6 +19,7 @@ function formatOrdinal(n: number, isBs: boolean) {
       : n % 10 === 3 && n % 100 !== 13
       ? "rd"
       : "th";
+
   return `${isBs ? "Ti" : "You"}: ${n}${suffix}`;
 }
 
@@ -55,13 +57,13 @@ function LeaderboardCard({
   youRow?: LeaderboardEntry | null;
 }) {
   return (
-    <div className="h-full rounded-[28px] border border-white/10 bg-white/5 p-5 backdrop-blur-md sm:p-6">
+    <div className="h-full w-full min-w-0 rounded-[28px] border border-white/10 bg-white/5 p-5 backdrop-blur-md sm:p-6">
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-[28px] font-black tracking-tight text-white">
           {title}
         </h3>
 
-        <div className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-300 whitespace-nowrap">
+        <div className="whitespace-nowrap rounded-full border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-300">
           {positionLabel}
         </div>
       </div>
@@ -252,133 +254,130 @@ export default function HomePage() {
           </div>
         </header>
 
-        <section className="grid gap-6 py-6 lg:grid-cols-[1fr_0.96fr]">
-          <div className="rounded-[30px] border border-white/10 bg-white/5 p-6 shadow-2xl backdrop-blur-md sm:p-8">
-            <div className="max-w-2xl">
-              <div className="inline-flex items-center justify-center gap-2 rounded-full border border-orange-500/35 bg-orange-500/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-orange-300">
-                <span>🛠️</span>
-                <span>AI Diagnostic Challenge</span>
-              </div>
+        {/* JEDAN zajednički inner wrapper za sve 4 grupe */}
+        <div className="mx-auto w-full max-w-[1280px]">
+          <section className="grid gap-6 py-6 xl:grid-cols-2">
+            <div className="rounded-[30px] border border-white/10 bg-white/5 p-6 shadow-2xl backdrop-blur-md sm:p-8">
+              <div className="max-w-2xl">
+                <div className="inline-flex items-center justify-center gap-2 rounded-full border border-orange-500/35 bg-orange-500/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-orange-300">
+                  <span>🛠️</span>
+                  <span>AI Diagnostic Challenge</span>
+                </div>
 
-              <h2 className="mt-6 text-5xl font-black leading-[0.95] tracking-tight sm:text-6xl">
-                {t.appName}
-              </h2>
+                <h2 className="mt-6 text-5xl font-black leading-[0.95] tracking-tight sm:text-6xl">
+                  {t.appName}
+                </h2>
 
-              <p className="mt-4 max-w-2xl text-xl leading-8 text-zinc-200">
-                {isBs
-                  ? "Dijagnosticiraj kvar, povećaj svoj rank i dokaži znanje."
-                  : "Diagnose the fault, increase your rank and prove knowledge."}
-              </p>
-
-              <div className="mt-8 grid gap-4 sm:max-w-xl">
-                <Link
-                  href="/single-player"
-                  className="rounded-2xl bg-orange-500 px-5 py-4 text-center text-[18px] font-bold text-black transition hover:bg-orange-400"
-                >
-                  {t.startSingle}
-                </Link>
-
-                <button className="rounded-2xl border border-white/12 bg-white/5 px-5 py-4 text-[18px] font-bold text-white transition hover:bg-white/10">
-                  {t.playFriends}
-                </button>
-
-                <button className="rounded-2xl border border-white/12 bg-black/30 px-5 py-4 text-[18px] font-bold text-zinc-100 transition hover:bg-white/10">
-                  {t.signInGoogle}
-                </button>
-              </div>
-
-              <div className="mt-7 flex justify-center">
-                <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/10 px-5 py-3 text-center text-base font-semibold text-emerald-300">
+                <p className="mt-4 max-w-2xl text-xl leading-8 text-zinc-200">
                   {isBs
-                    ? "Trial uključuje 2 besplatna testa od po 10 pitanja"
-                    : "Trial includes 2 free tests of 10 questions"}
+                    ? "Dijagnosticiraj kvar, povećaj svoj rank i dokaži znanje."
+                    : "Diagnose the fault, increase your rank and prove knowledge."}
+                </p>
+
+                <div className="mt-8 grid gap-4 sm:max-w-xl">
+                  <Link
+                    href="/single-player"
+                    className="rounded-2xl bg-orange-500 px-5 py-4 text-center text-[18px] font-bold text-black transition hover:bg-orange-400"
+                  >
+                    {t.startSingle}
+                  </Link>
+
+                  <button className="rounded-2xl border border-white/12 bg-white/5 px-5 py-4 text-[18px] font-bold text-white transition hover:bg-white/10">
+                    {t.playFriends}
+                  </button>
+
+                  <button className="rounded-2xl border border-white/12 bg-black/30 px-5 py-4 text-[18px] font-bold text-zinc-100 transition hover:bg-white/10">
+                    {t.signInGoogle}
+                  </button>
+                </div>
+
+                <div className="mt-7 flex justify-center">
+                  <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/10 px-5 py-3 text-center text-base font-semibold text-emerald-300">
+                    {isBs
+                      ? "Trial uključuje 2 besplatna testa od po 10 pitanja"
+                      : "Trial includes 2 free tests of 10 questions"}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          <div className="rounded-[30px] border border-white/10 bg-white/5 p-6 backdrop-blur-md sm:p-7">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full border border-orange-500/30 bg-orange-500/10 text-orange-300">
-                ⊕
+            <div className="rounded-[30px] border border-white/10 bg-white/5 p-6 backdrop-blur-md sm:p-7">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full border border-orange-500/30 bg-orange-500/10 text-orange-300">
+                  ⊕
+                </div>
+                <h3 className="text-[34px] font-black tracking-tight text-white">
+                  How it works
+                </h3>
               </div>
-              <h3 className="text-[34px] font-black tracking-tight text-white">
-                How it works
-              </h3>
-            </div>
 
-            <div className="mt-7">
-              <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-orange-400">
-                {isBs ? "Pravila" : "Rules"}
-              </p>
+              <div className="mt-7">
+                <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-orange-400">
+                  {isBs ? "Pravila" : "Rules"}
+                </p>
 
-              <div className="mt-4 space-y-4">
-                {howItWorksRules.map((item) => (
-                  <div
-                    key={item}
-                    className="flex items-start gap-3 text-[18px] leading-8 text-zinc-200"
-                  >
-                    <span className="mt-1 text-xl text-zinc-300">◻</span>
-                    <span>{item}</span>
-                  </div>
-                ))}
+                <div className="mt-4 space-y-4">
+                  {howItWorksRules.map((item) => (
+                    <div
+                      key={item}
+                      className="flex items-start gap-3 text-[18px] leading-8 text-zinc-200"
+                    >
+                      <span className="mt-1 text-xl text-zinc-300">◻</span>
+                      <span>{item}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
 
-            <div className="mt-7 border-t border-white/10 pt-7">
-              <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-orange-400">
-                {isBs ? "Bodovanje" : "Scoring"}
-              </p>
+              <div className="mt-7 border-t border-white/10 pt-7">
+                <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-orange-400">
+                  {isBs ? "Bodovanje" : "Scoring"}
+                </p>
 
-              <div className="mt-4 space-y-4">
-                {howItWorksScoring.map((item) => (
-                  <div
-                    key={item}
-                    className="flex items-start gap-3 text-[18px] leading-8 text-zinc-200"
-                  >
-                    <span className="mt-1 text-xl text-zinc-300">◎</span>
-                    <span>{item}</span>
-                  </div>
-                ))}
+                <div className="mt-4 space-y-4">
+                  {howItWorksScoring.map((item) => (
+                    <div
+                      key={item}
+                      className="flex items-start gap-3 text-[18px] leading-8 text-zinc-200"
+                    >
+                      <span className="mt-1 text-xl text-zinc-300">◎</span>
+                      <span>{item}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          </div>
-        </section>
-
-        <div className="mx-auto w-full max-w-[1200px]">
-          <section className="grid grid-cols-1 gap-6 pb-4 xl:grid-cols-12">
-            <div className="xl:col-span-6">
-              <LeaderboardCard
-                title="Your vs Friends"
-                rows={topLocalRows}
-                loading={false}
-                emptyText={
-                  isBs ? "Još nema lokalnih rezultata." : "No local results yet."
-                }
-                positionLabel={formatOrdinal(localPosition || 0, isBs)}
-                showYouRow={!!localYouRow && (localPosition || 0) > 8}
-                youRow={localYouRow}
-              />
-            </div>
-
-            <div className="xl:col-span-6">
-              <LeaderboardCard
-                title="Worldwide Score"
-                rows={globalRows}
-                loading={globalLoading}
-                emptyText={
-                  isBs
-                    ? "Globalni ranking još je prazan."
-                    : "Global leaderboard is still empty."
-                }
-                positionLabel={formatOrdinal(globalPosition || 0, isBs)}
-                showYouRow={!!globalYouRow && (globalPosition || 0) > 8}
-                youRow={globalYouRow}
-              />
             </div>
           </section>
 
-          <footer className="mt-auto pb-2 pt-1 text-center text-xs tracking-[0.14em] text-zinc-500">
+          <section className="grid gap-6 pb-4 xl:grid-cols-2">
+            <LeaderboardCard
+              title="Your vs Friends"
+              rows={topLocalRows}
+              loading={false}
+              emptyText={
+                isBs ? "Još nema lokalnih rezultata." : "No local results yet."
+              }
+              positionLabel={formatOrdinal(localPosition || 0, isBs)}
+              showYouRow={!!localYouRow && (localPosition || 0) > 8}
+              youRow={localYouRow}
+            />
+
+            <LeaderboardCard
+              title="Worldwide Score"
+              rows={globalRows}
+              loading={globalLoading}
+              emptyText={
+                isBs
+                  ? "Globalni ranking još je prazan."
+                  : "Global leaderboard is still empty."
+              }
+              positionLabel={formatOrdinal(globalPosition || 0, isBs)}
+              showYouRow={!!globalYouRow && (globalPosition || 0) > 8}
+              youRow={globalYouRow}
+            />
+          </section>
+
+          <footer className="pb-2 pt-1 text-center text-xs tracking-[0.14em] text-zinc-500">
             © ZEDA&apos;S Group LTD | AK Solutions
           </footer>
         </div>
