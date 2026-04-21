@@ -68,7 +68,9 @@ export default function SinglePlayerPage() {
   const isBs = locale === "bs";
 
   // ✅ DEFAULT MODE = ALL
-  const [selected, setSelected] = useState(modes[0]);
+  type ModeOption = (typeof modes)[number];
+
+  const [selected, setSelected] = useState<ModeOption>(modes[0]);
 
   // leaderboard state
   const [topLocalRows, setTopLocalRows] = useState<LeaderboardEntry[]>([]);
