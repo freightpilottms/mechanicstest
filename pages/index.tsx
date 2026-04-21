@@ -55,13 +55,13 @@ function LeaderboardCard({
   youRow?: LeaderboardEntry | null;
 }) {
   return (
-    <div className="rounded-[28px] border border-white/10 bg-white/5 p-5 backdrop-blur-md sm:p-6">
+    <div className="h-full rounded-[28px] border border-white/10 bg-white/5 p-5 backdrop-blur-md sm:p-6">
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-[28px] font-black tracking-tight text-white">
           {title}
         </h3>
 
-        <div className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-300">
+        <div className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-300 whitespace-nowrap">
           {positionLabel}
         </div>
       </div>
@@ -346,32 +346,36 @@ export default function HomePage() {
         </section>
 
         <div className="mx-auto w-full max-w-[1200px]">
-          <section className="grid gap-6 pb-4 xl:grid-cols-2">
-            <LeaderboardCard
-              title="Your vs Friends"
-              rows={topLocalRows}
-              loading={false}
-              emptyText={
-                isBs ? "Još nema lokalnih rezultata." : "No local results yet."
-              }
-              positionLabel={formatOrdinal(localPosition || 0, isBs)}
-              showYouRow={!!localYouRow && (localPosition || 0) > 8}
-              youRow={localYouRow}
-            />
+          <section className="grid grid-cols-1 gap-6 pb-4 xl:grid-cols-12">
+            <div className="xl:col-span-6">
+              <LeaderboardCard
+                title="Your vs Friends"
+                rows={topLocalRows}
+                loading={false}
+                emptyText={
+                  isBs ? "Još nema lokalnih rezultata." : "No local results yet."
+                }
+                positionLabel={formatOrdinal(localPosition || 0, isBs)}
+                showYouRow={!!localYouRow && (localPosition || 0) > 8}
+                youRow={localYouRow}
+              />
+            </div>
 
-            <LeaderboardCard
-              title="Worldwide Score"
-              rows={globalRows}
-              loading={globalLoading}
-              emptyText={
-                isBs
-                  ? "Globalni ranking još je prazan."
-                  : "Global leaderboard is still empty."
-              }
-              positionLabel={formatOrdinal(globalPosition || 0, isBs)}
-              showYouRow={!!globalYouRow && (globalPosition || 0) > 8}
-              youRow={globalYouRow}
-            />
+            <div className="xl:col-span-6">
+              <LeaderboardCard
+                title="Worldwide Score"
+                rows={globalRows}
+                loading={globalLoading}
+                emptyText={
+                  isBs
+                    ? "Globalni ranking još je prazan."
+                    : "Global leaderboard is still empty."
+                }
+                positionLabel={formatOrdinal(globalPosition || 0, isBs)}
+                showYouRow={!!globalYouRow && (globalPosition || 0) > 8}
+                youRow={globalYouRow}
+              />
+            </div>
           </section>
 
           <footer className="mt-auto pb-2 pt-1 text-center text-xs tracking-[0.14em] text-zinc-500">
