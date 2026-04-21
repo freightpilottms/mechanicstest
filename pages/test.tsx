@@ -35,6 +35,7 @@ function formatTime(totalSeconds: number) {
   const seconds = totalSeconds % 60;
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
+
 function truncateText(text: string, maxLength = 120) {
   if (!text) return "";
   if (text.length <= maxLength) return text;
@@ -92,6 +93,7 @@ function PreviewCard({
     </div>
   );
 }
+
 function getRank(score: number) {
   if (score >= 9) return "Master Tech";
   if (score >= 7) return "Advanced";
@@ -196,6 +198,7 @@ export default function TestPage() {
     title: string;
     content: string | string[];
   } | null>(null);
+
   const sessionIdRef = useRef(buildTestSessionId(testMode, locale));
   const leaderboardSubmittedRef = useRef(false);
 
@@ -802,54 +805,93 @@ export default function TestPage() {
                         </div>
                       ) : null}
 
-<div className="grid gap-4 lg:grid-cols-3">
-  {item.question.answer_main ? (
-    <PreviewCard
-      title={isBs ? "Najvjerovatniji uzrok" : "Most Likely Cause"}
-      content={item.question.answer_main}
-      buttonText={isBs ? "Prikaži više" : "See more"}
-      onOpen={() =>
-        setDetailModal({
-          title: isBs ? "Najvjerovatniji uzrok" : "Most Likely Cause",
-          content: item.question.answer_main || "",
-        })
-      }
-    />
-  ) : null}
+                      <div className="grid gap-4 lg:grid-cols-3">
+                        {item.question.answer_main ? (
+                          <PreviewCard
+                            title={isBs ? "Najvjerovatniji uzrok" : "Most Likely Cause"}
+                            content={item.question.answer_main}
+                            buttonText={isBs ? "Prikaži više" : "See more"}
+                            onOpen={() =>
+                              setDetailModal({
+                                title: isBs ? "Najvjerovatniji uzrok" : "Most Likely Cause",
+                                content: item.question.answer_main || "",
+                              })
+                            }
+                          />
+                        ) : null}
 
-  {item.question.answer_why_no_code ? (
-    <PreviewCard
-      title={isBs ? "Zašto ECU ne baca grešku" : "Why ECU May Not Set a Fault"}
-      content={item.question.answer_why_no_code}
-      buttonText={isBs ? "Prikaži više" : "See more"}
-      onOpen={() =>
-        setDetailModal({
-          title: isBs ? "Zašto ECU ne baca grešku" : "Why ECU May Not Set a Fault",
-          content: item.question.answer_why_no_code || "",
-        })
-      }
-    />
-  ) : null}
+                        {item.question.answer_why_no_code ? (
+                          <PreviewCard
+                            title={isBs ? "Zašto ECU ne baca grešku" : "Why ECU May Not Set a Fault"}
+                            content={item.question.answer_why_no_code}
+                            buttonText={isBs ? "Prikaži više" : "See more"}
+                            onOpen={() =>
+                              setDetailModal({
+                                title: isBs ? "Zašto ECU ne baca grešku" : "Why ECU May Not Set a Fault",
+                                content: item.question.answer_why_no_code || "",
+                              })
+                            }
+                          />
+                        ) : null}
 
-  {Array.isArray(item.question.answer_proof) && item.question.answer_proof.length ? (
-    <PreviewCard
-      title={isBs ? "Kako dokazati" : "How to Prove It"}
-      content={item.question.answer_proof}
-      buttonText={isBs ? "Prikaži više" : "See more"}
-      onOpen={() =>
-        setDetailModal({
-          title: isBs ? "Kako dokazati" : "How to Prove It",
-          content: item.question.answer_proof || [],
-        })
-      }
-    />
-  ) : null}
-</div>
+                        {Array.isArray(item.question.answer_proof) && item.question.answer_proof.length ? (
+                          <PreviewCard
+                            title={isBs ? "Kako dokazati" : "How to Prove It"}
+                            content={item.question.answer_proof}
+                            buttonText={isBs ? "Prikaži više" : "See more"}
+                            onOpen={() =>
+                              setDetailModal({
+                                title: isBs ? "Kako dokazati" : "How to Prove It",
+                                content: item.question.answer_proof || [],
+                              })
+                            }
+                          />
+                        ) : null}
+                      </div>
                     </div>
                   </div>
                 </div>
               ))}
             </section>
+
+            {detailModal ? (
+              <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 px-4">
+                <div className="w-full max-w-2xl rounded-[28px] border border-white/10 bg-[#11151c] p-5 shadow-2xl backdrop-blur-md sm:p-6">
+                  <div className="flex items-center justify-between gap-4">
+                    <h3 className="text-2xl font-black tracking-tight text-white">
+                      {detailModal.title}
+                    </h3>
+
+                    <button
+                      type="button"
+                      onClick={() => setDetailModal(null)}
+                      className="rounded-xl border border-white/10 bg-black/20 px-4 py-2 text-sm font-bold text-zinc-200 transition hover:bg-white/10"
+                    >
+                      {isBs ? "Zatvori" : "Close"}
+                    </button>
+                  </div>
+
+                  <div className="mt-5 max-h-[70vh] overflow-y-auto pr-1">
+                    {Array.isArray(detailModal.content) ? (
+                      <ul className="space-y-3">
+                        {detailModal.content.map((item, index) => (
+                          <li
+                            key={index}
+                            className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm leading-7 text-zinc-200"
+                          >
+                            {item}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="whitespace-pre-wrap text-sm leading-7 text-zinc-200">
+                        {detailModal.content}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : null}
 
             <footer className="pb-2 pt-4 text-center text-xs tracking-[0.14em] text-zinc-500">
               © ZEDA&apos;S Group LTD | AK Solutions
@@ -1107,46 +1149,6 @@ export default function TestPage() {
           </footer>
         </div>
       </div>
-
-      {detailModal ? (
-  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
-    <div className="w-full max-w-2xl rounded-[28px] border border-white/10 bg-[#11151c] p-5 shadow-2xl backdrop-blur-md sm:p-6">
-      <div className="flex items-center justify-between gap-4">
-        <h3 className="text-2xl font-black tracking-tight text-white">
-          {detailModal.title}
-        </h3>
-
-        <button
-          type="button"
-          onClick={() => setDetailModal(null)}
-          className="rounded-xl border border-white/10 bg-black/20 px-4 py-2 text-sm font-bold text-zinc-200 transition hover:bg-white/10"
-        >
-          {isBs ? "Zatvori" : "Close"}
-        </button>
-      </div>
-
-      <div className="mt-5 max-h-[70vh] overflow-y-auto pr-1">
-        {Array.isArray(detailModal.content) ? (
-          <ul className="space-y-3">
-            {detailModal.content.map((item, index) => (
-              <li
-                key={index}
-                className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm leading-7 text-zinc-200"
-              >
-                {item}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="whitespace-pre-wrap text-sm leading-7 text-zinc-200">
-            {detailModal.content}
-          </p>
-        )}
-      </div>
-    </div>
-  </div>
-) : null}
-
     </main>
   );
 }
