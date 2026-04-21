@@ -894,40 +894,42 @@ export default function TestPage() {
                   : "Write the most likely root cause and optionally add how you would confirm it."}
               </p>
 
-              <div className="mt-8 grid gap-3 sm:grid-cols-3">
-                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                  <p className="text-xs uppercase tracking-[0.2em] text-zinc-400">
-                    {isBs ? "Pitanje" : "Question"}
-                  </p>
-                  <p className="mt-2 text-3xl font-black text-white">
-                    {currentIndex + 1}/{questions.length}
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                  <p className="text-xs uppercase tracking-[0.2em] text-zinc-400">
-                    {isBs ? "Vrijeme" : "Timer"}
-                  </p>
-                  <p
-                    className={`mt-2 text-3xl font-black ${
-                      timerCritical ? "text-red-300" : timerWarning ? "text-yellow-300" : "text-white"
-                    }`}
-                  >
-                    {formatTime(timeLeft)}
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                  <p className="text-xs uppercase tracking-[0.2em] text-zinc-400">
-                    {isBs ? "Težina" : "Difficulty"}
-                  </p>
-                  <div
-                    className={`mt-2 inline-flex rounded-full border px-4 py-2 text-sm font-bold ${difficultyBadgeClasses(
-                      currentQuestion!.difficulty
-                    )}`}
-                  >
-                    {getDifficultyText(currentQuestion!.difficulty, isBs)}
-                  </div>
-                </div>
-              </div>
+              <div className="mt-8 grid grid-cols-3 gap-2 sm:gap-3">
+  <div className="rounded-xl border border-white/10 bg-black/20 p-3 sm:rounded-2xl sm:p-4">
+    <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-400 sm:text-xs sm:tracking-[0.2em]">
+      {isBs ? "Pitanje" : "Question"}
+    </p>
+    <p className="mt-1 text-xl font-black text-white sm:mt-2 sm:text-3xl">
+      {currentIndex + 1}/{questions.length}
+    </p>
+  </div>
+
+  <div className="rounded-xl border border-white/10 bg-black/20 p-3 sm:rounded-2xl sm:p-4">
+    <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-400 sm:text-xs sm:tracking-[0.2em]">
+      {isBs ? "Vrijeme" : "Timer"}
+    </p>
+    <p
+      className={`mt-1 text-xl font-black sm:mt-2 sm:text-3xl ${
+        timerCritical ? "text-red-300" : timerWarning ? "text-yellow-300" : "text-white"
+      }`}
+    >
+      {formatTime(timeLeft)}
+    </p>
+  </div>
+
+  <div className="rounded-xl border border-white/10 bg-black/20 p-3 sm:rounded-2xl sm:p-4">
+    <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-400 sm:text-xs sm:tracking-[0.2em]">
+      {isBs ? "Težina" : "Difficulty"}
+    </p>
+    <div
+      className={`mt-1 inline-flex rounded-full border px-3 py-1 text-xs font-bold sm:mt-2 sm:px-4 sm:py-2 sm:text-sm ${difficultyBadgeClasses(
+        currentQuestion!.difficulty
+      )}`}
+    >
+      {getDifficultyText(currentQuestion!.difficulty, isBs)}
+    </div>
+  </div>
+</div>
 
               <div className="mt-7">
                 <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-[0.2em] text-zinc-400">
