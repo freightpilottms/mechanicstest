@@ -217,19 +217,31 @@ export default function SinglePlayerPage() {
 
           {/* LEADERBOARD */}
           <section className="grid gap-6 pb-4 xl:grid-cols-2">
-            <div className="rounded-2xl bg-white/5 p-5">
-              <h3>Your vs Friends</h3>
-              {topLocalRows.map((r, i) => (
-                <div key={i}>{i + 1}. {r.player_name}</div>
-              ))}
-            </div>
+            <LeaderboardCard
+              title="You vs Friends"
+              rows={topLocalRows}
+              loading={false}
+              emptyText={
+                isBs ? "Još nema lokalnih rezultata." : "No local results yet."
+              }
+              positionLabel={formatOrdinal(localPosition || 0, isBs)}
+              showYouRow={!!localYouRow && (localPosition || 0) > 8}
+              youRow={localYouRow}
+            />
 
-            <div className="rounded-2xl bg-white/5 p-5">
-              <h3>Worldwide Score</h3>
-              {globalLoading ? "Loading..." : globalRows.map((r, i) => (
-                <div key={i}>{i + 1}. {r.player_name}</div>
-              ))}
-            </div>
+            <LeaderboardCard
+              title="Worldwide Score"
+              rows={globalRows}
+              loading={globalLoading}
+              emptyText={
+                isBs
+                  ? "Globalni ranking još je prazan."
+                  : "Global leaderboard is still empty."
+              }
+              positionLabel={formatOrdinal(globalPosition || 0, isBs)}
+              showYouRow={!!globalYouRow && (globalPosition || 0) > 8}
+              youRow={globalYouRow}
+            />
           </section>
 
           {/* FOOTER */}

@@ -2,7 +2,6 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DIFFICULTY_LABELS, TIME_LIMITS, type Difficulty } from "@/lib/mock-questions";
-import type { Locale } from "@/lib/i18n";
 import { useLocale } from "@/lib/locale-context";
 import {
   buildTestSessionId,
@@ -20,6 +19,7 @@ import {
   getOrCreateLocalPlayerKey,
   saveLocalLeaderboardEntry,
 } from "@/lib/leaderboard";
+
 type EvaluatedResult = {
   score: number;
   rank: string;
@@ -60,10 +60,7 @@ function getDifficultyText(difficulty: Difficulty, isBs: boolean) {
   return DIFFICULTY_LABELS[difficulty][isBs ? "bs" : "en"];
 }
 
-function buildLocalFallbackEvaluation(
-  answer: string,
-  isBs: boolean
-): EvaluatedResult {
+function buildLocalFallbackEvaluation(answer: string, isBs: boolean): EvaluatedResult {
   const score = answer.trim() ? 4 : 0;
 
   return {
@@ -84,10 +81,46 @@ function getRemainingSeconds(deadlineAt: number, fallbackTimeLeft: number) {
   return Math.max(0, Math.ceil((deadlineAt - Date.now()) / 1000));
 }
 
+function modeLabel(mode: string, isBs: boolean) {
+  if (mode === "eu") return isBs ? "Evropska vozila" : "European Cars";
+  if (mode === "us") return isBs ? "Američka vozila" : "US Cars";
+  if (mode === "asia") return isBs ? "Azijska vozila" : "Asia Cars";
+  return isBs ? "Dijagnostika svih vozila" : "All Cars Diagnosis";
+}
+
+function verdictChip(verdict: EvaluatedResult["verdict"]) {
+  if (verdict === "correct") return "border-emerald-500/30 bg-emerald-500/10 text-emerald-300";
+  if (verdict === "very_close") return "border-sky-500/30 bg-sky-500/10 text-sky-300";
+  if (verdict === "partial") return "border-yellow-500/30 bg-yellow-500/10 text-yellow-300";
+  if (verdict === "weak") return "border-orange-500/30 bg-orange-500/10 text-orange-300";
+  return "border-red-500/30 bg-red-500/10 text-red-300";
+}
+
+function verdictText(verdict: EvaluatedResult["verdict"], isBs: boolean) {
+  if (verdict === "correct") return isBs ? "Tačno" : "Correct";
+  if (verdict === "very_close") return isBs ? "Vrlo blizu" : "Very Close";
+  if (verdict === "partial") return isBs ? "Djelimično" : "Partial";
+  if (verdict === "weak") return isBs ? "Slabo" : "Weak";
+  return isBs ? "Netačno" : "Wrong";
+}
+
+function renderList(items?: string[]) {
+  if (!Array.isArray(items) || !items.length) return null;
+  return (
+    <ul className="space-y-2">
+      {items.map((item, index) => (
+        <li key={`${item}-${index}`} className="flex items-start gap-3 text-[15px] leading-7 text-zinc-200">
+          <span className="mt-1 text-zinc-400">•</span>
+          <span>{item}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export default function TestPage() {
   const router = useRouter();
-  const { locale, setLocale } = useLocale();
-  const routeLang = router.query.lang;
+  const { locale } = useLocale();
   const testMode = String(router.query.mode || "all");
   const isBs = locale === "bs";
 
@@ -393,7 +426,7 @@ export default function TestPage() {
     }
   }
 
-const progress = questions.length ? ((currentIndex + 1) / questions.length) * 100 : 0;
+  const progress = questions.length ? ((currentIndex + 1) / questions.length) * 100 : 0;
   const currentAnswer = answers[currentIndex]?.answer || "";
   const currentTimeLimit = currentQuestion ? TIME_LIMITS[currentQuestion.difficulty] : 0;
   const timerPercent = currentTimeLimit ? (timeLeft / currentTimeLimit) * 100 : 0;
@@ -416,11 +449,9 @@ const progress = questions.length ? ((currentIndex + 1) / questions.length) * 10
           score,
           rank,
           feedback: ai
-            ? (
-                isBs
-                  ? `Ocjena: ${ai.score} / 10 — ${ai.reason_short || "AI evaluator je obradio odgovor."}`
-                  : `Score: ${ai.score} / 10 — ${ai.reason_short || "AI evaluator processed the answer."}`
-              )
+            ? isBs
+              ? `Ocjena: ${ai.score} / 10 — ${ai.reason_short || "AI evaluator je obradio odgovor."}`
+              : `Score: ${ai.score} / 10 — ${ai.reason_short || "AI evaluator processed the answer."}`
             : fallback.feedback,
           diagnosisPercent: ai?.diagnosis_percent ?? fallback.diagnosisPercent,
           bonus: ai?.bonus ?? fallback.bonus,
@@ -440,9 +471,10 @@ const progress = questions.length ? ((currentIndex + 1) / questions.length) * 10
   const finalRank = isBs ? getRankBs(averageScore) : getRank(averageScore);
   const answeredCount = answers.filter((entry) => entry?.answer?.trim().length > 0).length;
   const timedOutCount = answers.filter((entry) => entry?.timedOut).length;
+
   useEffect(() => {
     if (!finished || evaluating || !results.length || leaderboardSubmittedRef.current) return;
-  
+
     const entry: LeaderboardEntry = {
       player_key: getOrCreateLocalPlayerKey(),
       player_name: getLocalPlayerName(),
@@ -456,10 +488,10 @@ const progress = questions.length ? ((currentIndex + 1) / questions.length) * 10
       answered_count: answeredCount,
       timed_out_count: timedOutCount,
     };
-  
+
     saveLocalLeaderboardEntry(entry);
     leaderboardSubmittedRef.current = true;
-  
+
     fetch("/api/leaderboard", {
       method: "POST",
       headers: {
@@ -478,18 +510,24 @@ const progress = questions.length ? ((currentIndex + 1) / questions.length) * 10
     router.query.mode,
     timedOutCount,
   ]);
+
   if (loading) {
     return (
-      <main className="min-h-screen bg-[#0a0d12] px-1 py-4 text-white sm:px-2 sm:py-6 lg:px-6">
-        <div className="mx-auto w-full max-w-[100vw] px-1 sm:px-2 lg:max-w-6xl lg:px-0">
-          <section className="rounded-3xl border border-white/10 bg-white/5 p-8 backdrop-blur">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-orange-400">
+      <main className="relative min-h-screen overflow-hidden bg-[#090b10] text-white">
+        <div
+          className="absolute inset-0 scale-105 bg-cover bg-center opacity-45 blur-[9px]"
+          style={{ backgroundImage: "url('/garage-bg.jpg')" }}
+        />
+        <div className="absolute inset-0 bg-black/40" />
+        <div className="relative mx-auto flex min-h-screen w-full max-w-7xl flex-col px-4 py-3 sm:px-6 lg:px-8">
+          <div className="mx-auto mt-10 w-full max-w-[1280px] rounded-[30px] border border-white/10 bg-white/5 p-8 backdrop-blur-md">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-orange-400">
               Mechanic IQ Test
             </p>
-            <h1 className="mt-3 text-3xl font-black tracking-tight">
+            <h1 className="mt-3 text-4xl font-black tracking-tight">
               {isBs ? "Učitavanje testa..." : "Loading test..."}
             </h1>
-          </section>
+          </div>
         </div>
       </main>
     );
@@ -497,35 +535,40 @@ const progress = questions.length ? ((currentIndex + 1) / questions.length) * 10
 
   if (loadError) {
     return (
-      <main className="min-h-screen bg-[#0a0d12] px-1 py-4 text-white sm:px-2 sm:py-6 lg:px-6">
-        <div className="mx-auto w-full max-w-[100vw] px-1 sm:px-2 lg:max-w-6xl lg:px-0">
-          <section className="rounded-3xl border border-red-500/20 bg-red-500/10 p-8 backdrop-blur">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-red-300">
+      <main className="relative min-h-screen overflow-hidden bg-[#090b10] text-white">
+        <div
+          className="absolute inset-0 scale-105 bg-cover bg-center opacity-45 blur-[9px]"
+          style={{ backgroundImage: "url('/garage-bg.jpg')" }}
+        />
+        <div className="absolute inset-0 bg-black/40" />
+        <div className="relative mx-auto flex min-h-screen w-full max-w-7xl flex-col px-4 py-3 sm:px-6 lg:px-8">
+          <div className="mx-auto mt-10 w-full max-w-[1280px] rounded-[30px] border border-red-500/20 bg-red-500/10 p-8 backdrop-blur-md">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-red-300">
               {isBs ? "Greška" : "Error"}
             </p>
-            <h1 className="mt-3 text-2xl font-black tracking-tight">
+            <h1 className="mt-3 text-3xl font-black tracking-tight">
               {isBs ? "Test nije učitan" : "Test failed to load"}
             </h1>
             <p className="mt-4 text-sm text-red-100">{loadError}</p>
-            <div className="mt-6 flex gap-3">
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
               <button
                 type="button"
                 onClick={() => {
                   clearActiveTestSession();
                   router.replace(`/test?mode=${encodeURIComponent(testMode)}`);
                 }}
-                className="rounded-2xl bg-orange-500 px-5 py-3 flex-1 font-bold text-black transition hover:bg-orange-400"
+                className="rounded-2xl bg-orange-500 px-5 py-4 font-bold text-black transition hover:bg-orange-400"
               >
                 {isBs ? "Pokušaj ponovo" : "Try Again"}
               </button>
               <Link
                 href="/single-player"
-                className="rounded-2xl border border-white/10 bg-black/20 px-5 py-3 flex-1 font-bold text-zinc-100 transition hover:bg-white/10"
+                className="rounded-2xl border border-white/10 bg-black/20 px-5 py-4 text-center font-bold text-zinc-100 transition hover:bg-white/10"
               >
                 {isBs ? "Nazad" : "Back"}
               </Link>
             </div>
-          </section>
+          </div>
         </div>
       </main>
     );
@@ -537,393 +580,519 @@ const progress = questions.length ? ((currentIndex + 1) / questions.length) * 10
 
   if (finished) {
     return (
-      <main className="min-h-screen bg-[#0a0d12] px-1 py-4 text-white sm:px-2 sm:py-6 lg:px-6">
-        <div className="mx-auto w-full max-w-[100vw] px-1 sm:px-2 lg:max-w-6xl lg:px-0">
-          <section className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur sm:p-8">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-orange-400">
-              {isBs ? "Rezultati testa" : "Test Results"}
-            </p>
+      <main className="relative min-h-screen overflow-hidden bg-[#090b10] text-white">
+        <div
+          className="absolute inset-0 scale-105 bg-cover bg-center opacity-45 blur-[9px]"
+          style={{ backgroundImage: "url('/garage-bg.jpg')" }}
+        />
+        <div className="absolute inset-0 bg-black/40" />
 
-            <h1 className="mt-3 text-3xl font-black tracking-tight">
-              {isBs ? "Završni pregled" : "Final Review"}
-            </h1>
+        <div className="relative mx-auto flex min-h-screen w-full max-w-7xl flex-col px-4 py-3 sm:px-6 lg:px-8">
+          <header className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur-md">
+            <Link
+              href="/single-player"
+              className="rounded-xl border border-white/10 bg-black/20 px-4 py-2 text-sm font-semibold text-zinc-200 transition hover:bg-white/10"
+            >
+              ← {isBs ? "Nazad" : "Back"}
+            </Link>
+            <h1 className="text-xl font-bold">{isBs ? "Rezultati testa" : "Test Results"}</h1>
+          </header>
 
-            <div className="mt-6 grid gap-3 md:grid-cols-4">
-              <div className="rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 py-4 text-orange-300">
-                <div className="text-xs uppercase tracking-[0.2em] opacity-80">
-                  {isBs ? "Ukupna ocjena" : "Overall Score"}
+          <div className="mx-auto w-full max-w-[1280px] py-6">
+            <section className="grid gap-6 xl:grid-cols-2">
+              <div className="rounded-[30px] border border-white/10 bg-white/5 p-6 shadow-2xl backdrop-blur-md sm:p-8">
+                <div className="inline-flex items-center rounded-full border border-orange-500/35 bg-orange-500/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-orange-300">
+                  {isBs ? "Završen test" : "Completed Test"}
                 </div>
-                <div className="mt-2 text-3xl font-black">{averageScore} / 10</div>
-              </div>
 
-              <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-4 text-zinc-200">
-                <div className="text-xs uppercase tracking-[0.2em] text-zinc-500">
-                  {isBs ? "Rang" : "Rank"}
+                <h2 className="mt-6 text-5xl font-black leading-[0.95] tracking-tight sm:text-6xl">
+                  {isBs ? "Tvoj rezultat" : "Your Score"}
+                </h2>
+
+                <p className="mt-4 text-xl leading-8 text-zinc-200">
+                  {isBs
+                    ? "Dijagnosticiraj kvar, povećaj svoj rank i dokaži znanje."
+                    : "Diagnose the fault, increase your rank and prove knowledge."}
+                </p>
+
+                <div className="mt-8 grid gap-4 sm:grid-cols-3">
+                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                    <p className="text-xs uppercase tracking-[0.2em] text-zinc-400">
+                      {isBs ? "Prosjek" : "Average"}
+                    </p>
+                    <p className="mt-2 text-3xl font-black text-white">{averageScore.toFixed(1)}</p>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                    <p className="text-xs uppercase tracking-[0.2em] text-zinc-400">
+                      {isBs ? "Rank" : "Rank"}
+                    </p>
+                    <p className="mt-2 text-2xl font-black text-orange-300">{finalRank}</p>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                    <p className="text-xs uppercase tracking-[0.2em] text-zinc-400">
+                      {isBs ? "Odgovoreno" : "Answered"}
+                    </p>
+                    <p className="mt-2 text-3xl font-black text-white">
+                      {answeredCount}/{results.length}
+                    </p>
+                  </div>
                 </div>
-                <div className="mt-2 text-xl font-black">{finalRank}</div>
-              </div>
 
-              <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-4 text-zinc-200">
-                <div className="text-xs uppercase tracking-[0.2em] text-zinc-500">
-                  {isBs ? "Odgovoreno" : "Answered"}
+                <div className="mt-8 grid gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      clearActiveTestSession();
+                      router.replace(`/test?mode=${encodeURIComponent(testMode)}`);
+                    }}
+                    className="rounded-2xl bg-orange-500 px-5 py-4 font-bold text-black transition hover:bg-orange-400"
+                  >
+                    {isBs ? "Igraj ponovo" : "Play Again"}
+                  </button>
+                  <Link
+                    href="/single-player"
+                    className="rounded-2xl border border-white/10 bg-black/20 px-5 py-4 text-center font-bold text-zinc-100 transition hover:bg-white/10"
+                  >
+                    {isBs ? "Promijeni mod" : "Change Mode"}
+                  </Link>
                 </div>
-                <div className="mt-2 text-xl font-black">{answeredCount} / {questions.length}</div>
               </div>
 
-              <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-4 text-zinc-200">
-                <div className="text-xs uppercase tracking-[0.2em] text-zinc-500">
-                  {isBs ? "Isteklo vrijeme" : "Timed Out"}
+              <div className="rounded-[30px] border border-white/10 bg-white/5 p-6 backdrop-blur-md sm:p-8">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full border border-orange-500/30 bg-orange-500/10 text-orange-300">
+                    ⊕
+                  </div>
+                  <h3 className="text-[34px] font-black tracking-tight text-white">
+                    {isBs ? "Sažetak" : "Summary"}
+                  </h3>
                 </div>
-                <div className="mt-2 text-xl font-black">{timedOutCount}</div>
+
+                <div className="mt-7 space-y-4">
+                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-zinc-200">
+                    {isBs ? "Mod" : "Mode"}:{" "}
+                    <span className="font-bold text-white">{modeLabel(testMode, isBs)}</span>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-zinc-200">
+                    {isBs ? "Pitanja" : "Questions"}:{" "}
+                    <span className="font-bold text-white">{results.length}</span>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-zinc-200">
+                    {isBs ? "Isteklo vremena" : "Timed Out"}:{" "}
+                    <span className="font-bold text-white">{timedOutCount}</span>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-zinc-200">
+                    {isBs ? "AI evaluacija" : "AI Evaluation"}:{" "}
+                    <span className="font-bold text-white">
+                      {evaluating
+                        ? isBs
+                          ? "U toku..."
+                          : "In progress..."
+                        : isBs
+                        ? "Završeno"
+                        : "Completed"}
+                    </span>
+                  </div>
+                </div>
               </div>
-            </div>
+            </section>
 
-            {evaluating && (
-              <div className="mt-6 rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 py-4 text-sm text-orange-200">
-                {isBs ? "AI ocjenjuje odgovore..." : "AI is evaluating answers..."}
-              </div>
-            )}
-
-            <div className="mt-8 space-y-6">
-              {results.map(({ question, answerState, evaluation }, index) => (
-                <article key={question.id} className="rounded-3xl border border-white/10 bg-black/20 p-5">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-zinc-500">
-                        {isBs ? "Pitanje" : "Question"} {index + 1} • {question.vehicle}
-                      </p>
-
-                      <h2 className="mt-2 text-2xl font-black tracking-tight">{question.title}</h2>
+            <section className="mt-6 grid gap-4">
+              {results.map((item, index) => (
+                <div
+                  key={index}
+                  className="rounded-[28px] border border-white/10 bg-white/5 p-5 backdrop-blur-md sm:p-6"
+                >
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="rounded-full border border-white/10 bg-black/20 px-4 py-2 text-sm font-semibold text-zinc-200">
+                      {isBs ? "Pitanje" : "Question"} {index + 1}
                     </div>
-
-                    <div className="flex flex-wrap gap-2">
-                      <span className={`rounded-full border px-3 py-1 text-xs font-bold uppercase tracking-[0.2em] ${difficultyBadgeClasses(question.difficulty)}`}>
-                        {getDifficultyText(question.difficulty, isBs)}
-                      </span>
-                      <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-bold uppercase tracking-[0.2em] text-zinc-300">
-                        {evaluation.score} / 10
-                      </span>
+                    <div
+                      className={`rounded-full border px-4 py-2 text-sm font-semibold ${difficultyBadgeClasses(
+                        item.question.difficulty
+                      )}`}
+                    >
+                      {getDifficultyText(item.question.difficulty, isBs)}
+                    </div>
+                    <div
+                      className={`rounded-full border px-4 py-2 text-sm font-semibold ${verdictChip(
+                        item.evaluation.verdict
+                      )}`}
+                    >
+                      {verdictText(item.evaluation.verdict, isBs)}
+                    </div>
+                    <div className="ml-auto rounded-full border border-orange-500/30 bg-orange-500/10 px-4 py-2 text-sm font-bold text-orange-300">
+                      {item.evaluation.score}/10
                     </div>
                   </div>
 
-                  <div className="mt-5 grid gap-4 lg:grid-cols-2">
-                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                      <p className="text-sm font-semibold uppercase tracking-[0.2em] text-zinc-500">
-                        {isBs ? "Tvoj odgovor" : "Your Answer"}
-                      </p>
-                      <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-zinc-200">
-                        {answerState.answer?.trim() || (isBs ? "Nema odgovora." : "No answer provided.")}
-                      </p>
-
-                      <div className="mt-4 flex flex-wrap gap-2 text-xs text-zinc-400">
-                        <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1">
-                          {isBs ? "Utrošeno" : "Spent"}: {formatTime(answerState.timeSpent)}
-                        </span>
-                        {answerState.timedOut && (
-                          <span className="rounded-full border border-red-500/20 bg-red-500/10 px-3 py-1 text-red-300">
-                            {isBs ? "Vrijeme isteklo" : "Timed out"}
-                          </span>
-                        )}
+                  <div className="mt-5 grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+                    <div className="space-y-4">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
+                          {isBs ? "Vozilo" : "Vehicle"}
+                        </p>
+                        <p className="mt-2 text-lg font-bold text-white">
+                          {item.question.vehicle || "—"}
+                        </p>
                       </div>
+
+                      {item.question.title ? (
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
+                            {isBs ? "Scenario" : "Scenario"}
+                          </p>
+                          <p className="mt-2 text-zinc-200">{item.question.title}</p>
+                        </div>
+                      ) : null}
+
+                      {Array.isArray(item.question.questions) && item.question.questions.length ? (
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
+                            {isBs ? "Zadatak" : "Task"}
+                          </p>
+                          <div className="mt-2 rounded-2xl border border-white/10 bg-black/20 p-4 text-zinc-100">
+                            {item.question.questions[0]}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {renderList(item.question.symptoms) ? (
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
+                            {isBs ? "Simptomi" : "Symptoms"}
+                          </p>
+                          <div className="mt-2">{renderList(item.question.symptoms)}</div>
+                        </div>
+                      ) : null}
+
+                      {renderList(item.question.driving) ? (
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
+                            {isBs ? "Tok vožnje" : "Driving"}
+                          </p>
+                          <div className="mt-2">{renderList(item.question.driving)}</div>
+                        </div>
+                      ) : null}
+
+                      {renderList(item.question.extra) ? (
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
+                            {isBs ? "Dodatno" : "Extra"}
+                          </p>
+                          <div className="mt-2">{renderList(item.question.extra)}</div>
+                        </div>
+                      ) : null}
                     </div>
 
-                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                      <p className="text-sm font-semibold uppercase tracking-[0.2em] text-zinc-500">
-                        {isBs ? "Ocjena i rang" : "Score & Rank"}
-                      </p>
-                      <p className="mt-3 text-sm leading-6 text-zinc-200">{evaluation.feedback}</p>
-
-                      <div className="mt-4 flex flex-wrap gap-2 text-xs text-zinc-400">
-                        <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1">
-                          {isBs ? "Rang" : "Rank"}: {evaluation.rank}
-                        </span>
-                        <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1">
-                          {isBs ? "Blizina dijagnoze" : "Diagnosis closeness"}: {evaluation.diagnosisPercent}%
-                        </span>
-                        <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1">
-                          {isBs ? "Bonus" : "Bonus"}: +{evaluation.bonus}
-                        </span>
-                        {evaluation.matchedCause ? (
-                          <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1">
-                            {isBs ? "Prepoznato" : "Matched"}: {evaluation.matchedCause}
-                          </span>
-                        ) : null}
+                    <div className="space-y-4">
+                      <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                        <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
+                          {isBs ? "Tvoj odgovor" : "Your Answer"}
+                        </p>
+                        <p className="mt-3 whitespace-pre-wrap text-zinc-100">
+                          {item.answerState.answer?.trim()
+                            ? item.answerState.answer
+                            : isBs
+                            ? "Nema odgovora."
+                            : "No answer."}
+                        </p>
                       </div>
+
+                      <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                        <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
+                          {isBs ? "Povratna informacija" : "Feedback"}
+                        </p>
+                        <p className="mt-3 text-zinc-200">{item.evaluation.feedback}</p>
+                      </div>
+
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                          <p className="text-xs uppercase tracking-[0.22em] text-zinc-400">
+                            {isBs ? "Dijagnoza" : "Diagnosis"}
+                          </p>
+                          <p className="mt-2 text-2xl font-black text-white">
+                            {item.evaluation.diagnosisPercent}%
+                          </p>
+                        </div>
+                        <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                          <p className="text-xs uppercase tracking-[0.22em] text-zinc-400">
+                            {isBs ? "Bonus" : "Bonus"}
+                          </p>
+                          <p className="mt-2 text-2xl font-black text-white">
+                            +{item.evaluation.bonus}
+                          </p>
+                        </div>
+                      </div>
+
+                      {item.evaluation.matchedCause ? (
+                        <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                          <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
+                            {isBs ? "Prepoznat uzrok" : "Matched Cause"}
+                          </p>
+                          <p className="mt-3 text-zinc-100">{item.evaluation.matchedCause}</p>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
-
-                  <div className="mt-4 grid gap-4 lg:grid-cols-3">
-                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                      <p className="text-sm font-semibold uppercase tracking-[0.2em] text-zinc-500">
-                        {isBs ? "Najvjerovatniji uzrok" : "Most Likely Cause"}
-                      </p>
-                      <p className="mt-3 text-sm leading-6 text-zinc-200">{question.answer_main}</p>
-                    </div>
-
-                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                      <p className="text-sm font-semibold uppercase tracking-[0.2em] text-zinc-500">
-                        {isBs ? "Zašto ECU ne baca grešku" : "Why ECU May Not Set a Fault"}
-                      </p>
-                      <p className="mt-3 text-sm leading-6 text-zinc-200">{question.answer_why_no_code}</p>
-                    </div>
-
-                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                      <p className="text-sm font-semibold uppercase tracking-[0.2em] text-zinc-500">
-                        {isBs ? "Kako dokazati" : "How to Prove It"}
-                      </p>
-                      <ul className="mt-3 space-y-2 text-sm leading-6 text-zinc-200">
-                        {question.answer_proof.map((item, proofIndex) => (
-                          <li key={proofIndex} className="rounded-xl border border-white/8 bg-black/20 px-3 py-2">
-                            {item}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  </div>
-                </article>
+                </div>
               ))}
-            </div>
+            </section>
 
-            <div className="mt-8 flex flex-wrap gap-3">
-              <Link
-                href="/single-player"
-                className="rounded-2xl bg-orange-500 px-5 py-3 flex-1 font-bold text-black transition hover:bg-orange-400"
-              >
-                {isBs ? "Nazad na meni" : "Back to menu"}
-              </Link>
-
-              <button
-                type="button"
-                onClick={() => {
-                  clearActiveTestSession();
-                  router.replace(`/test?mode=${encodeURIComponent(testMode)}`);
-                }}
-                className="rounded-2xl border border-white/10 bg-black/20 px-5 py-3 flex-1 font-bold text-zinc-100 transition hover:bg-white/10"
-              >
-                {isBs ? "Pokreni novi test" : "Start new test"}
-              </button>
-            </div>
-          </section>
+            <footer className="pb-2 pt-4 text-center text-xs tracking-[0.14em] text-zinc-500">
+              © ZEDA&apos;S Group LTD | AK Solutions
+            </footer>
+          </div>
         </div>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-[#0a0d12] px-1 py-4 text-white sm:px-2 sm:py-6 lg:px-6">
+    <main className="relative min-h-screen overflow-hidden bg-[#090b10] text-white">
+      <div
+        className="absolute inset-0 scale-105 bg-cover bg-center opacity-45 blur-[9px]"
+        style={{ backgroundImage: "url('/garage-bg.jpg')" }}
+      />
+      <div className="absolute inset-0 bg-black/40" />
+
       {showFloatingTimer ? (
-        <div className="fixed right-3 top-3 z-40 rounded-2xl border border-white/10 bg-[#0f141b]/95 px-3 py-3 shadow-2xl backdrop-blur lg:hidden">
-          <div className="flex items-center gap-3">
-            <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-400">
-              {isBs ? "Vrijeme" : "Time"}
-            </span>
-            <span
-              className={`rounded-full border px-3 py-1 text-xs font-bold uppercase tracking-[0.2em] ${
-                timerCritical
-                  ? "border-red-500/30 bg-red-500/10 text-red-300"
-                  : timerWarning
-                    ? "border-orange-500/30 bg-orange-500/10 text-orange-300"
-                    : "border-white/10 bg-white/5 text-zinc-300"
-              }`}
-            >
-              {formatTime(timeLeft)}
-            </span>
-          </div>
-          <div className="mt-3 h-1.5 w-28 overflow-hidden rounded-full bg-white/10">
-            <div
-              className={`h-full rounded-full transition-all ${
-                timerCritical ? "bg-red-500" : timerWarning ? "bg-orange-500" : "bg-emerald-500"
-              }`}
-              style={{ width: `${timerPercent}%` }}
-            />
-          </div>
+        <div className="fixed left-1/2 top-3 z-50 -translate-x-1/2 rounded-full border border-white/10 bg-black/70 px-5 py-2 text-sm font-bold text-white backdrop-blur-md lg:hidden">
+          {formatTime(timeLeft)}
         </div>
       ) : null}
 
-      <div className="mx-auto w-full max-w-[100vw] px-1 sm:px-2 lg:max-w-6xl lg:px-0">
-        <section className="rounded-3xl border border-white/10 bg-white/5 p-5 backdrop-blur sm:p-8">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-orange-400">
-                Mechanic IQ Test
-              </p>
-              <h1 className="mt-3 text-3xl font-black tracking-tight">
-                {currentQuestion?.title}
-              </h1>
-              <div className="mt-4 inline-flex rounded-2xl border border-white/10 bg-black/20 px-4 py-2 text-sm font-semibold text-zinc-200">
-                <span className="text-zinc-400">{isBs ? "Vozilo:" : "Vehicle:"}</span>
-                <span className="ml-2">{currentQuestion?.vehicle}</span>
+      <div className="relative mx-auto flex min-h-screen w-full max-w-7xl flex-col px-4 py-3 sm:px-6 lg:px-8">
+        <header className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur-md">
+          <Link
+            href="/single-player"
+            className="rounded-xl border border-white/10 bg-black/20 px-4 py-2 text-sm font-semibold text-zinc-200 transition hover:bg-white/10"
+          >
+            ← {isBs ? "Nazad" : "Back"}
+          </Link>
+
+          <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm font-semibold text-zinc-200">
+            <span>{modeLabel(testMode, isBs)}</span>
+          </div>
+        </header>
+
+        <div className="mx-auto w-full max-w-[1280px] py-6">
+          <section className="grid gap-6 xl:grid-cols-[1fr_0.92fr]">
+            <div className="rounded-[30px] border border-white/10 bg-white/5 p-6 shadow-2xl backdrop-blur-md sm:p-8">
+              <div className="inline-flex items-center gap-2 rounded-full border border-orange-500/35 bg-orange-500/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-orange-300">
+                <span>🛠️</span>
+                <span>{isBs ? "Test u toku" : "Test in progress"}</span>
               </div>
-            </div>
 
-            <div className="flex flex-wrap gap-2">
-              {currentQuestion && (
-                <span className={`rounded-full border px-3 py-1 text-xs font-bold uppercase tracking-[0.2em] ${difficultyBadgeClasses(currentQuestion.difficulty)}`}>
-                  {getDifficultyText(currentQuestion.difficulty, isBs)}
-                </span>
-              )}
-              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-bold uppercase tracking-[0.2em] text-zinc-300">
-                {currentIndex + 1} / {questions.length}
-              </span>
-            </div>
-          </div>
+              <h2 className="mt-6 text-4xl font-black leading-[0.95] tracking-tight sm:text-5xl">
+                {isBs ? "Dijagnosticiraj kvar" : "Diagnose the fault"}
+              </h2>
 
-          <div className="mt-6 h-2 overflow-hidden rounded-full bg-white/10">
-            <div
-              className="h-full rounded-full bg-orange-500 transition-all"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-
-          <div className="mt-6 grid gap-4 lg:grid-cols-[1.45fr_0.85fr] xl:gap-5">
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-3 sm:p-5">
-              <p className="text-sm font-semibold uppercase tracking-[0.2em] text-zinc-500">
-                {isBs ? "Simptomi" : "Symptoms"}
+              <p className="mt-4 text-lg leading-8 text-zinc-200">
+                {isBs
+                  ? "Napiši najvjerovatniji uzrok i po želji dodaj kako bi potvrdio kvar."
+                  : "Write the most likely root cause and optionally add how you would confirm it."}
               </p>
 
-              <ul className="mt-4 space-y-3 text-sm leading-6 text-zinc-200">
-                {currentQuestion?.symptoms.map((item, index) => (
-                  <li key={index} className="rounded-xl border border-white/8 bg-white/5 px-3 py-3 sm:px-4">
-                    {item}
-                  </li>
-                ))}
-              </ul>
-
-              <div className="mt-5 grid gap-4 md:grid-cols-2">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">
-                    {isBs ? "Vožnja / uslovi" : "Driving / Conditions"}
+              <div className="mt-8 grid gap-3 sm:grid-cols-3">
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <p className="text-xs uppercase tracking-[0.2em] text-zinc-400">
+                    {isBs ? "Pitanje" : "Question"}
                   </p>
-                  <ul className="mt-3 space-y-2 text-sm leading-6 text-zinc-300">
-                    {currentQuestion?.driving.map((item, index) => (
-                      <li key={index}>• {item}</li>
-                    ))}
-                  </ul>
+                  <p className="mt-2 text-3xl font-black text-white">
+                    {currentIndex + 1}/{questions.length}
+                  </p>
                 </div>
-
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">
-                    {isBs ? "Dodatno" : "Extra"}
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <p className="text-xs uppercase tracking-[0.2em] text-zinc-400">
+                    {isBs ? "Vrijeme" : "Timer"}
                   </p>
-                  <ul className="mt-3 space-y-2 text-sm leading-6 text-zinc-300">
-                    {currentQuestion?.extra.map((item, index) => (
-                      <li key={index}>• {item}</li>
-                    ))}
-                  </ul>
+                  <p
+                    className={`mt-2 text-3xl font-black ${
+                      timerCritical ? "text-red-300" : timerWarning ? "text-yellow-300" : "text-white"
+                    }`}
+                  >
+                    {formatTime(timeLeft)}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <p className="text-xs uppercase tracking-[0.2em] text-zinc-400">
+                    {isBs ? "Težina" : "Difficulty"}
+                  </p>
+                  <div
+                    className={`mt-2 inline-flex rounded-full border px-4 py-2 text-sm font-bold ${difficultyBadgeClasses(
+                      currentQuestion!.difficulty
+                    )}`}
+                  >
+                    {getDifficultyText(currentQuestion!.difficulty, isBs)}
+                  </div>
                 </div>
               </div>
 
-              {currentQuestion?.hint?.length ? (
-                <div className="mt-5 rounded-2xl border border-orange-500/20 bg-orange-500/10 px-3 py-4 sm:px-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-orange-300">
-                    {isBs ? "Hint" : "Hint"}
-                  </p>
-                  <ul className="mt-3 space-y-2 text-sm leading-6 text-orange-100">
-                    {currentQuestion.hint.map((item, index) => (
-                      <li key={index}>• {item}</li>
-                    ))}
-                  </ul>
+              <div className="mt-7">
+                <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-[0.2em] text-zinc-400">
+                  <span>{isBs ? "Napredak" : "Progress"}</span>
+                  <span>{Math.round(progress)}%</span>
                 </div>
-              ) : null}
+                <div className="mt-3 h-3 overflow-hidden rounded-full bg-white/10">
+                  <div
+                    className={`h-full rounded-full transition-all ${
+                      timerCritical
+                        ? "bg-red-400"
+                        : timerWarning
+                        ? "bg-yellow-400"
+                        : "bg-orange-500"
+                    }`}
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+              </div>
+
+              <div className="mt-8 space-y-6">
+                {currentQuestion?.vehicle ? (
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
+                      {isBs ? "Vozilo" : "Vehicle"}
+                    </p>
+                    <p className="mt-2 text-2xl font-black text-white">{currentQuestion.vehicle}</p>
+                  </div>
+                ) : null}
+
+                {currentQuestion?.title ? (
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
+                      {isBs ? "Scenario" : "Scenario"}
+                    </p>
+                    <p className="mt-2 text-zinc-200">{currentQuestion.title}</p>
+                  </div>
+                ) : null}
+
+                {Array.isArray(currentQuestion?.questions) && currentQuestion.questions.length ? (
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
+                      {isBs ? "Zadatak" : "Task"}
+                    </p>
+                    <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-4 text-lg font-semibold leading-8 text-white">
+                      {currentQuestion.questions[0]}
+                    </div>
+                  </div>
+                ) : null}
+
+                {Array.isArray(currentQuestion?.symptoms) && currentQuestion.symptoms.length ? (
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
+                      {isBs ? "Simptomi" : "Symptoms"}
+                    </p>
+                    <div className="mt-3">{renderList(currentQuestion.symptoms)}</div>
+                  </div>
+                ) : null}
+
+                {Array.isArray(currentQuestion?.driving) && currentQuestion.driving.length ? (
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
+                      {isBs ? "Tok vožnje" : "Driving"}
+                    </p>
+                    <div className="mt-3">{renderList(currentQuestion.driving)}</div>
+                  </div>
+                ) : null}
+
+                {Array.isArray(currentQuestion?.extra) && currentQuestion.extra.length ? (
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
+                      {isBs ? "Dodatno" : "Extra"}
+                    </p>
+                    <div className="mt-3">{renderList(currentQuestion.extra)}</div>
+                  </div>
+                ) : null}
+              </div>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-3 sm:p-5 lg:sticky lg:top-6 lg:self-start">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-zinc-500">
-                  {isBs ? "Vrijeme" : "Time"}
-                </p>
-                <span
-                  className={`rounded-full border px-3 py-1 text-xs font-bold uppercase tracking-[0.2em] ${
-                    timerCritical
-                      ? "border-red-500/30 bg-red-500/10 text-red-300"
-                      : timerWarning
-                        ? "border-orange-500/30 bg-orange-500/10 text-orange-300"
-                        : "border-white/10 bg-white/5 text-zinc-300"
-                  }`}
-                >
-                  {formatTime(timeLeft)}
-                </span>
+            <div className="rounded-[30px] border border-white/10 bg-white/5 p-6 backdrop-blur-md sm:p-7">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full border border-orange-500/30 bg-orange-500/10 text-orange-300">
+                  ⊕
+                </div>
+                <h3 className="text-[34px] font-black tracking-tight text-white">
+                  {isBs ? "Odgovor" : "Answer"}
+                </h3>
               </div>
 
-              <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
-                <div
-                  className={`h-full rounded-full transition-all ${
-                    timerCritical ? "bg-red-500" : timerWarning ? "bg-orange-500" : "bg-emerald-500"
-                  }`}
-                  style={{ width: `${timerPercent}%` }}
-                />
+              <div className="mt-7 rounded-2xl border border-white/10 bg-black/20 p-4 text-sm leading-6 text-zinc-300">
+                {isBs
+                  ? "Upiši najvjerovatniji uzrok. Dodatno možeš navesti kako bi najlakše dokazao kvar."
+                  : "Write the most likely root cause. You can also add how you would best confirm the fault."}
               </div>
 
-              <div className="mt-6 space-y-4">
-                <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-4 sm:px-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">
-                    {isBs ? "Zadatak" : "Task"}
-                  </p>
-                  <p className="mt-2 text-sm leading-6 text-zinc-200">
-                    {isBs ? "Upiši najvjerovatniji uzrok kvara." : "Write the most likely cause of the fault."}
-                  </p>
-                </div>
-
-                <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-4 sm:px-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">
-                    {isBs ? "Bodovanje" : "Scoring"}
-                  </p>
-                  <p className="mt-2 text-sm leading-6 text-zinc-200">
-                    {isBs
-                      ? "Ako upišeš više odgovora, prvi se računa kao glavni, a ostali kao alternativa. Na osnovu toga dobiješ bodove."
-                      : "If you write more than one answer, the first one counts as your main answer and the rest count as alternatives. Your score is based on that."}
-                  </p>
-                </div>
-
-                <div className="rounded-2xl border border-orange-500/20 bg-orange-500/10 px-3 py-4 sm:px-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-orange-300">
-                    BONUS
-                  </p>
-                  <p className="mt-2 text-sm leading-6 text-orange-100">
-                    {isBs
-                      ? "Dobiješ dodatni bod ako detaljnije objasniš problem ili kako bi ga dokazao u praksi."
-                      : "You get an extra point if you explain the problem in more detail or how you would prove it in practice."}
-                  </p>
-                </div>
-              </div>
-
-              <label className="mt-6 block">
-                <span className="text-sm font-semibold uppercase tracking-[0.2em] text-zinc-500">
-                  {isBs ? "Tvoj odgovor" : "Your Answer"}
-                </span>
+              <div className="mt-6">
                 <textarea
                   value={currentAnswer}
                   onChange={(e) => updateAnswer(e.target.value)}
-                  rows={10}
-                  className="mt-3 w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-4 text-sm leading-6 text-zinc-100 outline-none transition placeholder:text-zinc-500 focus:border-orange-500/40 focus:bg-white/10 sm:px-4"
                   placeholder={
                     isBs
-                      ? "Upiši dijagnozu, zašto nema greške i kako bi dokazao kvar..."
-                      : "Write your diagnosis, why there is no fault code, and how you would prove the fault..."
+                      ? "Upiši svoj odgovor ovdje..."
+                      : "Write your answer here..."
                   }
+                  className="min-h-[280px] w-full rounded-[24px] border border-white/10 bg-black/30 p-5 text-base leading-7 text-white outline-none transition placeholder:text-zinc-500 focus:border-orange-500/40 focus:bg-black/40"
                 />
-              </label>
+              </div>
 
-              <div className="mt-6 flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => saveAndAdvance(false)}
-                  className="rounded-2xl bg-orange-500 px-5 py-3 flex-1 font-bold text-black transition hover:bg-orange-400"
-                >
-                  {isBs ? "Odgovori" : "Answer"}
-                </button>
-
+              <div className="mt-6 grid gap-3 sm:grid-cols-2">
                 <button
                   type="button"
                   onClick={handleQuit}
-                  className="rounded-2xl border border-white/10 bg-black/20 px-5 py-3 flex-1 font-bold text-zinc-100 transition hover:bg-white/10"
+                  className="rounded-2xl border border-white/12 bg-white/5 px-5 py-4 font-bold text-white transition hover:bg-white/10"
                 >
-                  {isBs ? "Odustani" : "Give Up"}
+                  {isBs ? "Odustani" : "Quit"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => saveAndAdvance(false)}
+                  className="rounded-2xl bg-orange-500 px-5 py-4 font-bold text-black transition hover:bg-orange-400"
+                >
+                  {currentIndex === questions.length - 1
+                    ? isBs
+                      ? "Završi test"
+                      : "Finish Test"
+                    : isBs
+                    ? "Odgovori"
+                    : "Submit"}
                 </button>
               </div>
+
+              <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <p className="text-xs uppercase tracking-[0.2em] text-zinc-400">
+                    {isBs ? "Vrijeme za pitanje" : "Question Time"}
+                  </p>
+                  <div className="mt-3 h-3 overflow-hidden rounded-full bg-white/10">
+                    <div
+                      className={`h-full rounded-full transition-all ${
+                        timerCritical
+                          ? "bg-red-400"
+                          : timerWarning
+                          ? "bg-yellow-400"
+                          : "bg-orange-500"
+                      }`}
+                      style={{ width: `${Math.max(0, Math.min(100, timerPercent))}%` }}
+                    />
+                  </div>
+                  <p className="mt-3 text-lg font-bold text-white">{formatTime(timeLeft)}</p>
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm leading-6 text-zinc-300">
+                  {isBs
+                    ? "Ako vrijeme istekne, pitanje se automatski zaključava i prelaziš na sljedeće."
+                    : "If time runs out, the question locks automatically and moves to the next one."}
+                </div>
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
+
+          <footer className="pb-2 pt-4 text-center text-xs tracking-[0.14em] text-zinc-500">
+            © ZEDA&apos;S Group LTD | AK Solutions
+          </footer>
+        </div>
       </div>
     </main>
   );

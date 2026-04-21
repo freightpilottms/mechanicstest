@@ -351,7 +351,7 @@ export default function HomePage() {
 
           <section className="grid gap-6 pb-4 xl:grid-cols-2">
             <LeaderboardCard
-              title="Your vs Friends"
+              title="You vs Friends"
               rows={topLocalRows}
               loading={false}
               emptyText={
