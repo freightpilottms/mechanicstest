@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { useState } from "react";
-import { useLocale } from "@/lib/i18n";
+import { useLocale } from "@/lib/locale-context";
 
 const modes = [
   {

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { useMemo } from "react";
 import { useRouter } from "next/router";
 import { getQuestionsForMode, TIME_LIMITS } from "@/lib/mock-questions";
-import { useLocale } from "@/lib/i18n";
+import { useLocale } from "@/lib/locale-context";
 
 export default function TestSetupPage() {
   const router = useRouter();

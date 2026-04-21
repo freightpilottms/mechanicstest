@@ -2,7 +2,8 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DIFFICULTY_LABELS, TIME_LIMITS, type Difficulty } from "@/lib/mock-questions";
-import { type Locale, useLocale } from "@/lib/i18n";
+import type { Locale } from "@/lib/i18n";
+import { useLocale } from "@/lib/locale-context";
 import {
   buildTestSessionId,
   clearActiveTestSession,

@@ -1,5 +1,6 @@
 import { useMemo } from "react";
-import { getMessages, useLocale } from "@/lib/i18n";
+import { getMessages } from "@/lib/i18n";
+import { useLocale } from "@/lib/locale-context";
 import Link from "next/link";
 
 const modes = [
