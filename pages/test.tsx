@@ -969,16 +969,7 @@ export default function TestPage() {
                   </div>
                 ) : null}
 
-                {Array.isArray(currentQuestion?.questions) && currentQuestion.questions.length ? (
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
-                      {isBs ? "Zadatak" : "Task"}
-                    </p>
-                    <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-4 text-lg font-semibold leading-8 text-white">
-                      {currentQuestion.questions[0]}
-                    </div>
-                  </div>
-                ) : null}
+                
 
                 {Array.isArray(currentQuestion?.symptoms) && currentQuestion.symptoms.length ? (
                   <div>
@@ -1009,7 +1000,7 @@ export default function TestPage() {
               </div>
             </div>
 
-            <div className="rounded-[30px] border border-white/10 bg-white/5 p-6 backdrop-blur-md sm:p-7">
+            <div className="rounded-[30px] border border-white/10 bg-white/5 p-6 backdrop-blur-md sm:p-7 xl:sticky xl:top-6 xl:self-start">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full border border-orange-500/30 bg-orange-500/10 text-orange-300">
                   ⊕
