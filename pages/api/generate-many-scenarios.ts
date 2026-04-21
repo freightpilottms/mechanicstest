@@ -12,16 +12,200 @@ import {
 
 type SupportedLocale = "en" | "bs";
 
+type ScenarioAIResponse = {
+  brand: string;
+  platform_type: string;
+  category: string;
+  root_cause_id: string;
+  root_cause_label: string;
+  difficulty: "easy" | "medium" | "hard";
+  title: string;
+  vehicle: string;
+  symptoms: string[];
+  driving: string[];
+  extra: string[];
+  key_details: string[];
+  questions: string[];
+  hint: string[];
+  answer_main: string;
+  answer_why_no_code: string;
+  answer_proof: string[];
+  accepted_answers: string[];
+  partial_answers: string[];
+  scoring_notes: Record<string, any>;
+};
+
 function getLocaleFromReq(req: NextApiRequest): SupportedLocale {
   const raw = String(req.query.locale || req.query.lang || "en").toLowerCase();
   return raw === "bs" ? "bs" : "en";
 }
 
+function getDifficultyGuide(
+  difficulty: "easy" | "medium" | "hard",
+  locale: SupportedLocale
+) {
+  if (locale === "bs") {
+    if (difficulty === "easy") {
+      return `
+TEŽINA EASY:
+- Scenarij treba imati jasnije i prepoznatljivije simptome
+- 1 do 2 jaka traga smiju voditi prema tačnom uzroku
+- Hint može biti koristan, ali ne smije direktno otkrivati kvar
+- accepted_answers treba da sadrži 5 do 8 realnih sinonima ili prirodnih formulacija
+- partial_answers treba da sadrži 4 do 6 bliskih, ali manje preciznih odgovora
+`;
+    }
+
+    if (difficulty === "medium") {
+      return `
+TEŽINA MEDIUM:
+- Scenarij treba imati mješavinu korisnih i djelimično dvosmislenih simptoma
+- Hint smije pomoći, ali ne smije biti dovoljan sam po sebi
+- Mora postojati barem jedan simptom koji traži mehaničko razmišljanje
+- accepted_answers treba da sadrži 6 do 10 realnih sinonima ili formulacija
+- partial_answers treba da sadrži 5 do 8 odgovora koji su blizu tačnog uzroka
+`;
+    }
+
+    return `
+TEŽINA HARD:
+- Scenarij treba biti realan, ali zahtjevniji za zaključivanje
+- Simptomi ne smiju biti lažni, ali ne moraju svi direktno voditi na odgovor
+- Hint može biti varljiv ili samo djelimično koristan
+- U scenarij ubaci 1 do 2 sekundarna traga koji mogu navesti na pogrešan pravac ako se ne razmišlja dobro
+- accepted_answers treba da sadrži 8 do 12 realnih sinonima ili formulacija
+- partial_answers treba da sadrži 6 do 10 bliskih, ali nepotpunih odgovora
+`;
+  }
+
+  if (difficulty === "easy") {
+    return `
+EASY DIFFICULTY:
+- The scenario should include clearer, more recognizable symptoms
+- 1 to 2 strong clues may point toward the correct cause
+- The hint may help, but must not directly reveal the fault
+- accepted_answers should contain 5 to 8 realistic synonyms or natural phrasings
+- partial_answers should contain 4 to 6 close but less precise answers
+`;
+  }
+
+  if (difficulty === "medium") {
+    return `
+MEDIUM DIFFICULTY:
+- The scenario should mix helpful clues with some ambiguity
+- The hint may help, but must not be sufficient by itself
+- At least one symptom should require mechanic-style reasoning
+- accepted_answers should contain 6 to 10 realistic synonyms or phrasings
+- partial_answers should contain 5 to 8 answers that are close to the correct cause
+`;
+  }
+
+  return `
+HARD DIFFICULTY:
+- The scenario should be realistic but more demanding to solve
+- Symptoms must not be fake, but they do not all need to point directly to the answer
+- The hint may be misleading or only partially helpful
+- Include 1 to 2 secondary clues that may send a weak diagnostician in the wrong direction
+- accepted_answers should contain 8 to 12 realistic synonyms or phrasings
+- partial_answers should contain 6 to 10 close but incomplete answers
+`;
+}
+
+function getLanguageRules(locale: SupportedLocale) {
+  if (locale === "bs") {
+    return `
+JEZIK I TERMINOLOGIJA:
+- Sav tekst mora biti na prirodnom bosanskom jeziku
+- Ne miješaj engleski i bosanski
+- Ne koristi bukvalno prevedene izraze iz engleskog
+- Piši kao da iskusan mehaničar opisuje kvar drugom mehaničaru
+- Koristi prirodne izraze kao:
+  - ler
+  - preskakanje paljenja
+  - motanje volana
+  - motanje u krug
+  - hučanje
+  - kliktanje
+  - zveckanje
+  - curenje rashladne tečnosti
+  - gubitak pritiska turbine
+  - gašenje motora
+  - zastajkivanje
+  - vibracije u leru
+  - zanošenje pri kočenju
+- Izbjegavaj neprirodne fraze poput:
+  - full lock
+  - rough idle
+  - boost leak
+  - misfire
+  - low boost
+- Primjer loše fraze:
+  "Zveckanje pri motanju u pun lock"
+- Primjer dobre fraze:
+  "Zveckanje pri punom motanju volana"
+  "Preskakanje pri motanju u krug"
+`;
+  }
+
+  return `
+LANGUAGE AND TERMINOLOGY:
+- All text must be natural English
+- Do not mix languages
+- Write like an experienced mechanic describing a realistic diagnostic case
+`;
+}
+
+function getVarietyRules(locale: SupportedLocale) {
+  if (locale === "bs") {
+    return `
+RAZNOLIKOST SCENARIJA:
+- Nemoj praviti scenarije koji se stalno vrte oko zraka, goriva i istih senzora
+- Daj realnu raznolikost između ovih grupa kvarova:
+  - hlađenje i gubitak rashladne tečnosti
+  - dihtung glave i unutrašnji kvarovi motora
+  - turbo / vakuum / usis / EGR / DPF
+  - gorivo i pritisak goriva
+  - paljenje / sinkronizacija / senzori
+  - ležaj točka
+  - kinetički zglob
+  - nosači motora / mjenjača
+  - ovjes / seleni / kugle / stabilizator
+  - kočnice / diskovi / kliješta / ABS
+  - elektrika / mase / akumulator / alternator / starter
+- Neki scenariji smiju imati DTC kod kao hint
+- Neki scenariji ne smiju imati nikakav DTC
+- Neki scenariji smiju imati DTC koji nije dovoljan da direktno otkrije odgovor
+- Koristi i mehaničke kvarove bez ECU grešaka
+`;
+  }
+
+  return `
+SCENARIO VARIETY:
+- Do not overuse air-flow, fuel-flow, and generic sensor scenarios
+- Create realistic variety across:
+  - cooling system and coolant loss
+  - head gasket and internal engine faults
+  - turbo / vacuum / intake / EGR / DPF
+  - fuel delivery and pressure
+  - ignition / synchronization / sensor issues
+  - wheel bearing
+  - CV joint
+  - engine mounts / transmission mounts
+  - suspension / bushings / ball joints / stabilizer links
+  - brakes / discs / calipers / ABS
+  - electrical / grounds / battery / alternator / starter
+- Some scenarios may include a DTC as a hint
+- Some scenarios should have no DTC at all
+- Some scenarios may include a DTC that is incomplete or only partially helpful
+- Use mechanical failures too, not just ECU-related systems
+`;
+}
+
 function buildPrompt(seed: ScenarioSeed, locale: SupportedLocale) {
   const languageInstruction =
     locale === "bs"
-      ? "Generate ONE realistic automotive diagnostic scenario in BOSNIAN/SERBIAN/CROATIAN language."
-      : "Generate ONE realistic automotive diagnostic scenario in ENGLISH language.";
+      ? "Napravi JEDAN realan automobilski dijagnostički scenario na bosanskom jeziku."
+      : "Generate ONE realistic automotive diagnostic scenario in English.";
 
   const question1 =
     locale === "bs"
@@ -38,6 +222,10 @@ function buildPrompt(seed: ScenarioSeed, locale: SupportedLocale) {
       ? "Kako bi to dokazao u praksi"
       : "How would you prove it in practice";
 
+  const difficultyGuide = getDifficultyGuide(seed.difficulty, locale);
+  const languageRules = getLanguageRules(locale);
+  const varietyRules = getVarietyRules(locale);
+
   return `
 ${languageInstruction}
 
@@ -50,30 +238,62 @@ YOU MUST USE THESE FIXED INPUTS:
 - root_cause_id: ${seed.root_cause_id}
 - root_cause_label: ${seed.root_cause_label}
 
-SCENARIO CONTEXT:
-- Temperature: ${seed.context.temperature}
-- Load: ${seed.context.load}
-- Behavior: ${seed.context.behavior}
-- Timeline: ${seed.context.timeline}
+SCENARIO CONTEXT (MUST BE USED):
+- Temperature condition: ${seed.context.temperature}
+- Load condition: ${seed.context.load}
+- Behavior pattern: ${seed.context.behavior}
+- Failure timeline: ${seed.context.timeline}
 
 STRICT RULES:
-- ONE root cause only
-- MUST be realistic
-- MUST NOT be repetitive
-- MUST use context variables
-- NO misleading info
+- Only automotive diagnostics
+- Only one concrete root cause, exactly the one provided above
+- Brand / vehicle / platform / category / root cause must stay compatible
 - The failure MUST be mechanically possible for the exact engine/platform type
 - Never mention timing chain for a timing-belt engine unless that engine truly uses a chain
 - Never mention timing belt for a timing-chain engine unless that engine truly uses a belt
 - Never use diesel-only causes for petrol vehicles, and never use petrol-only causes for diesel vehicles
-- RETURN ONLY JSON
+- Return ONLY valid JSON
+- Do not include markdown
+- Do not invent a different brand, vehicle, category, difficulty or root cause
+- Keep the scenario educational, clear, realistic, and workshop-like
+- Do NOT generate fake symptoms
+- Do NOT make the case absurd or impossible
+- Do NOT write a trick question
+- Do NOT reveal the answer in the title
+- The title must describe the COMPLAINT or SYMPTOM CONTEXT only
+- The title must NOT contain:
+  - the failed component
+  - the exact diagnosis
+  - the DTC code
+  - the repair
+- Bad title example:
+  "Neispravan senzor radilice izaziva gašenje"
+- Good title example:
+  "Gašenje toplog motora nakon kraćeg zadržavanja"
+- Bad title example:
+  "Wheel bearing noise at speed"
+- Good title example:
+  "Hučanje koje raste sa brzinom i mijenja se u krivini"
 
-Questions MUST be:
+${languageRules}
+
+${varietyRules}
+
+${difficultyGuide}
+
+QUESTIONS MUST BE EXACTLY:
 1. ${question1}
 2. ${question2}
 3. ${question3}
 
-JSON:
+ACCEPTED ANSWERS / PARTIAL ANSWERS RULES:
+- accepted_answers must contain realistic synonyms, mechanic-style paraphrases, and natural alternative phrasings for the SAME root cause
+- partial_answers must contain close but incomplete answers that deserve partial credit
+- Do not repeat the exact same phrase many times
+- Make accepted_answers useful for semantic scoring
+- Make partial_answers useful for near-miss scoring
+
+JSON structure:
 {
   "brand": "${seed.brand}",
   "platform_type": "${seed.platform_type}",
@@ -99,12 +319,51 @@ JSON:
   "accepted_answers": ["..."],
   "partial_answers": ["..."],
   "scoring_notes": {
-    "directionWeight": 0.7,
-    "precisionWeight": 0.2,
-    "reasoningWeight": 0.1
+    "directionWeight": 0.6,
+    "precisionWeight": 0.25,
+    "reasoningWeight": 0.15,
+    "difficulty": "${seed.difficulty}",
+    "titleMustNotRevealAnswer": true,
+    "languageLocked": "${locale}"
   }
 }
+
+QUALITY CHECK BEFORE RETURNING JSON:
+- The title must NOT reveal the diagnosis
+- The language must be consistent and natural
+- The scenario must not feel generic
+- The provided context must clearly influence the complaint and story
+- The root cause must remain exactly the same as provided
+- accepted_answers must be rich enough for synonym recognition
+- partial_answers must support realistic partial credit
+- The case must sound like a real workshop case, not a textbook paragraph
 `;
+}
+
+function validateScenario(data: any): data is ScenarioAIResponse {
+  return (
+    data &&
+    typeof data.brand === "string" &&
+    typeof data.platform_type === "string" &&
+    typeof data.category === "string" &&
+    typeof data.root_cause_id === "string" &&
+    typeof data.root_cause_label === "string" &&
+    ["easy", "medium", "hard"].includes(data.difficulty) &&
+    typeof data.title === "string" &&
+    typeof data.vehicle === "string" &&
+    Array.isArray(data.symptoms) &&
+    Array.isArray(data.driving) &&
+    Array.isArray(data.extra) &&
+    Array.isArray(data.key_details) &&
+    Array.isArray(data.questions) &&
+    Array.isArray(data.hint) &&
+    typeof data.answer_main === "string" &&
+    typeof data.answer_why_no_code === "string" &&
+    Array.isArray(data.answer_proof) &&
+    Array.isArray(data.accepted_answers) &&
+    Array.isArray(data.partial_answers) &&
+    typeof data.scoring_notes === "object"
+  );
 }
 
 export default async function handler(
@@ -115,11 +374,7 @@ export default async function handler(
     const openai = getOpenAI();
     const model = process.env.OPENAI_SCENARIO_MODEL || "gpt-5-mini";
 
-    const count = Math.min(
-      50,
-      Math.max(1, Number(req.query.count || 1))
-    );
-
+    const count = Math.min(50, Math.max(1, Number(req.query.count || 1)));
     const locale = getLocaleFromReq(req);
 
     const created: any[] = [];
@@ -137,6 +392,11 @@ export default async function handler(
 
         const text = response.output_text;
         const parsed = JSON.parse(text);
+
+        if (!validateScenario(parsed)) {
+          failed.push("AI returned invalid scenario shape");
+          continue;
+        }
 
         const signature = makeScenarioSignature({
           brand: parsed.brand,
@@ -162,7 +422,6 @@ export default async function handler(
         });
 
         created.push(inserted);
-
       } catch (err: any) {
         failed.push(err?.message || "error");
       }
@@ -179,7 +438,6 @@ export default async function handler(
       existing,
       failed,
     });
-
   } catch (error: any) {
     return res.status(500).json({
       ok: false,
