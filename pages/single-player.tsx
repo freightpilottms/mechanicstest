@@ -1,7 +1,12 @@
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { useLocale } from "@/lib/locale-context";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  getLocalLeaderboard,
+  getTopLocalLeaderboard,
+  type LeaderboardEntry,
+} from "@/lib/leaderboard";
 
 const modes = [
   {
@@ -42,45 +47,77 @@ const modes = [
   },
 ] as const;
 
+function formatOrdinal(n: number, isBs: boolean) {
+  if (!n || n < 1) return isBs ? "Ti: —" : "You: —";
+
+  const suffix =
+    n % 10 === 1 && n % 100 !== 11
+      ? "st"
+      : n % 10 === 2 && n % 100 !== 12
+      ? "nd"
+      : n % 10 === 3 && n % 100 !== 13
+      ? "rd"
+      : "th";
+
+  return `${isBs ? "Ti" : "You"}: ${n}${suffix}`;
+}
+
 export default function SinglePlayerPage() {
   const router = useRouter();
   const { locale } = useLocale();
   const isBs = locale === "bs";
 
-  const [selected, setSelected] = useState<typeof modes[number] | null>(null);
+  // ✅ DEFAULT MODE = ALL
+  const [selected, setSelected] = useState(modes[0]);
+
+  // leaderboard state
+  const [topLocalRows, setTopLocalRows] = useState<LeaderboardEntry[]>([]);
+  const [globalRows, setGlobalRows] = useState<LeaderboardEntry[]>([]);
+  const [globalLoading, setGlobalLoading] = useState(true);
+
+  useEffect(() => {
+    setTopLocalRows(getTopLocalLeaderboard(8));
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadGlobal() {
+      try {
+        setGlobalLoading(true);
+        const res = await fetch("/api/leaderboard");
+        const data = await res.json();
+
+        if (!cancelled && data?.ok) {
+          setGlobalRows(data.rows || []);
+        }
+      } catch {
+        setGlobalRows([]);
+      } finally {
+        setGlobalLoading(false);
+      }
+    }
+
+    loadGlobal();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function startGame() {
-    if (!selected) return;
     router.push(`/test?mode=${selected.key}`);
   }
 
   const rules = isBs
-    ? [
-        "10 pitanja po testu",
-        "3 minute po pitanju",
-        "Nema rezultata dok test ne završi",
-      ]
-    : [
-        "10 questions per test",
-        "3 minutes per question",
-        "No results until test ends",
-      ];
+    ? ["10 pitanja", "3 minute po pitanju", "Rezultati na kraju"]
+    : ["10 questions", "3 minutes per question", "Results at the end"];
 
   const scoring = isBs
-    ? [
-        "Glavni uzrok = najviše bodova",
-        "Djelimičan odgovor = manje bodova",
-        "Dodatno objašnjenje = bonus",
-      ]
-    : [
-        "Main cause = highest score",
-        "Partial answer = reduced score",
-        "Extra explanation = bonus",
-      ];
+    ? ["Glavni uzrok = max bodovi", "Djelimično = manje", "Extra = bonus"]
+    : ["Main cause = max points", "Partial = reduced", "Extra = bonus"];
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#090b10] text-white">
-      {/* background */}
       <div
         className="absolute inset-0 scale-105 bg-cover bg-center opacity-45 blur-[9px]"
         style={{ backgroundImage: "url('/garage-bg.jpg')" }}
@@ -89,23 +126,17 @@ export default function SinglePlayerPage() {
 
       <div className="relative mx-auto flex min-h-screen w-full max-w-7xl flex-col px-4 py-3 sm:px-6 lg:px-8">
         
-        {/* header */}
+        {/* HEADER */}
         <header className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur-md">
-          <Link
-            href="/"
-            className="rounded-xl border border-white/10 bg-black/20 px-4 py-2 text-sm font-semibold text-zinc-200 hover:bg-white/10"
-          >
-            ← {isBs ? "Nazad" : "Back"}
-          </Link>
-
-          <h1 className="text-xl font-bold">Single Player</h1>
+          <Link href="/" className="text-sm">← Back</Link>
+          <h1 className="font-bold">Single Player</h1>
         </header>
 
-        {/* main wrapper */}
+        {/* MAIN */}
         <div className="mx-auto w-full max-w-[1280px]">
           <section className="grid gap-6 py-6 xl:grid-cols-2">
-            
-            {/* LEFT - MODES */}
+
+            {/* LEFT */}
             <div className="rounded-[30px] border border-white/10 bg-white/5 p-6 backdrop-blur-md">
               <h2 className="text-3xl font-black">
                 {isBs ? "Odaberi mod" : "Choose Mode"}
@@ -113,22 +144,20 @@ export default function SinglePlayerPage() {
 
               <div className="mt-6 grid gap-4">
                 {modes.map((m) => {
-                  const active = selected?.key === m.key;
+                  const active = selected.key === m.key;
 
                   return (
                     <button
                       key={m.key}
                       onClick={() => setSelected(m)}
-                      className={`w-full rounded-2xl border p-4 text-left transition ${
+                      className={`rounded-2xl border p-4 text-left ${
                         active
                           ? "border-orange-500 bg-white/10"
-                          : "border-white/10 bg-white/5 hover:bg-white/10"
+                          : "border-white/10 bg-white/5"
                       }`}
                     >
-                      <div className="flex items-center gap-4">
-                        <div
-                          className={`h-12 w-12 flex items-center justify-center rounded-xl bg-gradient-to-br ${m.color}`}
-                        >
+                      <div className="flex gap-4">
+                        <div className={`h-12 w-12 rounded-xl bg-gradient-to-br ${m.color} flex items-center justify-center`}>
                           {m.icon}
                         </div>
 
@@ -147,65 +176,63 @@ export default function SinglePlayerPage() {
               </div>
             </div>
 
-            {/* RIGHT - MODE DETAILS */}
+            {/* RIGHT */}
             <div className="rounded-[30px] border border-white/10 bg-white/5 p-6 backdrop-blur-md">
-              
-              {!selected ? (
-                <div className="text-center text-zinc-400 mt-20">
-                  {isBs
-                    ? "Odaberi mod sa lijeve strane"
-                    : "Select a mode on the left"}
-                </div>
-              ) : (
-                <>
-                  <h2 className="text-3xl font-black">
-                    {isBs ? selected.titleBs : selected.titleEn}
-                  </h2>
+              <h2 className="text-3xl font-black">
+                {isBs ? selected.titleBs : selected.titleEn}
+              </h2>
 
-                  <p className="mt-3 text-zinc-300">
-                    {isBs ? selected.descBs : selected.descEn}
-                  </p>
+              <p className="mt-3 text-zinc-300">
+                {isBs ? selected.descBs : selected.descEn}
+              </p>
 
-                  {/* RULES */}
-                  <div className="mt-6">
-                    <p className="text-xs uppercase text-orange-400">
-                      {isBs ? "Pravila" : "Rules"}
-                    </p>
+              <div className="mt-6">
+                <p className="text-xs text-orange-400">Rules</p>
+                <ul className="mt-2 text-sm text-zinc-300 space-y-1">
+                  {rules.map((r) => (
+                    <li key={r}>• {r}</li>
+                  ))}
+                </ul>
+              </div>
 
-                    <ul className="mt-3 space-y-2 text-sm text-zinc-300">
-                      {rules.map((r) => (
-                        <li key={r}>• {r}</li>
-                      ))}
-                    </ul>
-                  </div>
+              <div className="mt-6">
+                <p className="text-xs text-orange-400">Scoring</p>
+                <ul className="mt-2 text-sm text-zinc-300 space-y-1">
+                  {scoring.map((s) => (
+                    <li key={s}>• {s}</li>
+                  ))}
+                </ul>
+              </div>
 
-                  {/* SCORING */}
-                  <div className="mt-6">
-                    <p className="text-xs uppercase text-orange-400">
-                      {isBs ? "Bodovanje" : "Scoring"}
-                    </p>
-
-                    <ul className="mt-3 space-y-2 text-sm text-zinc-300">
-                      {scoring.map((s) => (
-                        <li key={s}>• {s}</li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  {/* START BUTTON */}
-                  <button
-                    onClick={startGame}
-                    className="mt-8 w-full rounded-2xl bg-orange-500 py-4 text-lg font-bold text-black hover:bg-orange-400 transition"
-                  >
-                    {isBs ? "Započni test" : "Start Test"}
-                  </button>
-                </>
-              )}
+              <button
+                onClick={startGame}
+                className="mt-8 w-full rounded-2xl bg-orange-500 py-4 font-bold text-black"
+              >
+                {isBs ? "Započni test" : "Start Test"}
+              </button>
             </div>
           </section>
 
+          {/* LEADERBOARD */}
+          <section className="grid gap-6 pb-4 xl:grid-cols-2">
+            <div className="rounded-2xl bg-white/5 p-5">
+              <h3>Your vs Friends</h3>
+              {topLocalRows.map((r, i) => (
+                <div key={i}>{i + 1}. {r.player_name}</div>
+              ))}
+            </div>
+
+            <div className="rounded-2xl bg-white/5 p-5">
+              <h3>Worldwide Score</h3>
+              {globalLoading ? "Loading..." : globalRows.map((r, i) => (
+                <div key={i}>{i + 1}. {r.player_name}</div>
+              ))}
+            </div>
+          </section>
+
+          {/* FOOTER */}
           <footer className="text-center text-xs text-zinc-500">
-            © ZEDA&apos;S Group LTD
+            © ZEDA&apos;S Group LTD | AK Solutions
           </footer>
         </div>
       </div>
