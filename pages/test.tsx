@@ -176,6 +176,29 @@ function renderList(items?: string[]) {
   );
 }
 
+const PLAYED_SCENARIOS_KEY = "mechanic_test_played_scenarios_v1";
+
+function readPlayedScenarioIds(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(PLAYED_SCENARIOS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writePlayedScenarioIds(ids: string[]) {
+  if (typeof window === "undefined") return;
+  try {
+    const unique = Array.from(new Set(ids)).slice(-200);
+    localStorage.setItem(PLAYED_SCENARIOS_KEY, JSON.stringify(unique));
+  } catch {}
+}
+
+
 export default function TestPage() {
   const router = useRouter();
   const { locale } = useLocale();
@@ -240,10 +263,20 @@ export default function TestPage() {
           return;
         }
 
-        const res = await fetch(
-          `/api/scenarios/test-set?count=10&locale=${encodeURIComponent(locale)}&mode=${encodeURIComponent(testMode)}`
-        );
-        const data = await res.json();
+        const playedIds = readPlayedScenarioIds();
+
+const params = new URLSearchParams({
+  count: "10",
+  locale,
+  mode: testMode,
+});
+
+if (playedIds.length) {
+  params.set("excludeIds", playedIds.join(","));
+}
+
+const res = await fetch(`/api/scenarios/test-set?${params.toString()}`);
+const data = await res.json();
 
         if (!res.ok || !data?.ok || !Array.isArray(data?.scenarios)) {
           throw new Error(data?.error || "Failed to load test scenarios");
@@ -252,6 +285,12 @@ export default function TestPage() {
         if (cancelled) return;
 
         const nextQuestions = data.scenarios as ScenarioQuestion[];
+
+        const fetchedIds = nextQuestions
+  .map((q: any) => q?.id)
+  .filter(Boolean);
+
+writePlayedScenarioIds([...playedIds, ...fetchedIds]);
         const nextAnswers = nextQuestions.map(() => ({
           answer: "",
           timedOut: false,

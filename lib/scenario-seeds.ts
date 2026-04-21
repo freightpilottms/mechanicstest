@@ -1,5 +1,17 @@
 type Difficulty = "easy" | "medium" | "hard";
 
+type VehicleTechMeta = {
+  year?: number;
+  power_kw?: number;
+  fuel_type?: "diesel" | "petrol";
+  induction?: "turbo" | "na";
+  timing_type?: "belt" | "chain";
+  has_start_stop?: boolean;
+  has_dpf?: boolean;
+  emission_standard?: string;
+  engine_code?: string;
+};
+
 export type ScenarioSeed = {
   brand: string;
   vehicle: string;
@@ -8,6 +20,15 @@ export type ScenarioSeed = {
   root_cause_id: string;
   root_cause_label: string;
   difficulty: Difficulty;
+  year?: number;
+  power_kw?: number;
+  fuel_type?: "diesel" | "petrol";
+  induction?: "turbo" | "na";
+  timing_type?: "belt" | "chain";
+  has_start_stop?: boolean;
+  has_dpf?: boolean;
+  emission_standard?: string;
+  engine_code?: string;
   context: {
     temperature: string;
     load: string;
@@ -90,12 +111,10 @@ type RootCauseTemplate = {
   root_cause_id: string;
   root_cause_label: string;
   difficulty: Difficulty;
-};
+} & VehicleTechMeta;
 
 const ROOT_CAUSE_POOL: RootCauseTemplate[] = [
-  // =========================
   // BMW
-  // =========================
   {
     brand: "BMW",
     vehicle: "BMW F10 330d",
@@ -169,9 +188,7 @@ const ROOT_CAUSE_POOL: RootCauseTemplate[] = [
     difficulty: "medium",
   },
 
-  // =========================
   // Audi
-  // =========================
   {
     brand: "Audi",
     vehicle: "Audi A5 1.8 TFSI",
@@ -227,9 +244,7 @@ const ROOT_CAUSE_POOL: RootCauseTemplate[] = [
     difficulty: "easy",
   },
 
-  // =========================
   // Volkswagen
-  // =========================
   {
     brand: "Volkswagen",
     vehicle: "VW Sharan 1.6 TDI",
@@ -312,9 +327,7 @@ const ROOT_CAUSE_POOL: RootCauseTemplate[] = [
     difficulty: "medium",
   },
 
-  // =========================
   // Skoda
-  // =========================
   {
     brand: "Skoda",
     vehicle: "Skoda Octavia 2.0 TDI",
@@ -343,9 +356,7 @@ const ROOT_CAUSE_POOL: RootCauseTemplate[] = [
     difficulty: "medium",
   },
 
-  // =========================
   // SEAT
-  // =========================
   {
     brand: "SEAT",
     vehicle: "SEAT Alhambra 2.0 TDI",
@@ -365,9 +376,7 @@ const ROOT_CAUSE_POOL: RootCauseTemplate[] = [
     difficulty: "medium",
   },
 
-  // =========================
   // Mercedes
-  // =========================
   {
     brand: "Mercedes",
     vehicle: "Mercedes W212 E220 CDI",
@@ -405,9 +414,7 @@ const ROOT_CAUSE_POOL: RootCauseTemplate[] = [
     difficulty: "medium",
   },
 
-  // =========================
   // Opel
-  // =========================
   {
     brand: "Opel",
     vehicle: "Opel Insignia 2.0 CDTI",
@@ -436,9 +443,7 @@ const ROOT_CAUSE_POOL: RootCauseTemplate[] = [
     difficulty: "easy",
   },
 
-  // =========================
   // Ford
-  // =========================
   {
     brand: "Ford",
     vehicle: "Ford Mondeo 2.0 TDCi",
@@ -467,9 +472,7 @@ const ROOT_CAUSE_POOL: RootCauseTemplate[] = [
     difficulty: "easy",
   },
 
-  // =========================
   // Peugeot / Citroen
-  // =========================
   {
     brand: "Peugeot",
     vehicle: "Peugeot 308 1.6 HDi",
@@ -489,9 +492,7 @@ const ROOT_CAUSE_POOL: RootCauseTemplate[] = [
     difficulty: "medium",
   },
 
-  // =========================
   // Renault
-  // =========================
   {
     brand: "Renault",
     vehicle: "Renault Megane 1.5 dCi",
@@ -511,9 +512,7 @@ const ROOT_CAUSE_POOL: RootCauseTemplate[] = [
     difficulty: "medium",
   },
 
-  // =========================
   // Toyota
-  // =========================
   {
     brand: "Toyota",
     vehicle: "Toyota Avensis 2.0 D-4D",
@@ -525,7 +524,7 @@ const ROOT_CAUSE_POOL: RootCauseTemplate[] = [
   },
   {
     brand: "Toyota",
-    vehicle: "Toyota Corolla 1.6 бензin",
+    vehicle: "Toyota Corolla 1.6 бензин",
     platform_type: "modern_petrol_port_injection_chain",
     category: "Drivetrain / Chassis",
     root_cause_id: "front_wheel_bearing_humming",
@@ -533,9 +532,7 @@ const ROOT_CAUSE_POOL: RootCauseTemplate[] = [
     difficulty: "easy",
   },
 
-  // =========================
   // Honda
-  // =========================
   {
     brand: "Honda",
     vehicle: "Honda Civic 2.2 i-CTDi",
@@ -555,9 +552,7 @@ const ROOT_CAUSE_POOL: RootCauseTemplate[] = [
     difficulty: "medium",
   },
 
-  // =========================
   // Hyundai / Kia
-  // =========================
   {
     brand: "Hyundai",
     vehicle: "Hyundai i30 1.6 CRDi",
@@ -577,6 +572,88 @@ const ROOT_CAUSE_POOL: RootCauseTemplate[] = [
     difficulty: "medium",
   },
 ];
+
+const VEHICLE_TECH_SPECS: Record<string, VehicleTechMeta> = {
+  "BMW F10 330d": { year: 2012, power_kw: 190, has_start_stop: true, emission_standard: "Euro 5" },
+  "BMW F10 320d": { year: 2012, power_kw: 135, has_start_stop: true, emission_standard: "Euro 5" },
+  "BMW E90 320d": { year: 2009, power_kw: 120, has_start_stop: false, emission_standard: "Euro 4/5" },
+  "BMW F30 320d": { year: 2014, power_kw: 135, has_start_stop: true, emission_standard: "Euro 5/6" },
+  "BMW E87 120d": { year: 2008, power_kw: 130, has_start_stop: false, emission_standard: "Euro 4" },
+  "BMW E60 520d": { year: 2009, power_kw: 130, has_start_stop: false, emission_standard: "Euro 4/5" },
+  "BMW E90 320i": { year: 2007, power_kw: 125, has_start_stop: false, emission_standard: "Euro 4" },
+
+  "Audi A5 1.8 TFSI": { year: 2010, power_kw: 125, has_start_stop: false, emission_standard: "Euro 5" },
+  "Audi A4 B8 1.8 TFSI": { year: 2009, power_kw: 118, has_start_stop: false, emission_standard: "Euro 5" },
+  "Audi A4 B8 2.0 TDI": { year: 2010, power_kw: 105, has_start_stop: false, emission_standard: "Euro 5" },
+  "Audi A6 4G 3.0 TDI": { year: 2012, power_kw: 180, has_start_stop: true, emission_standard: "Euro 5" },
+  "Audi A3 8P 2.0 TDI": { year: 2008, power_kw: 103, has_start_stop: false, emission_standard: "Euro 4/5" },
+  "Audi A3 8V 1.6 TDI": { year: 2014, power_kw: 81, has_start_stop: true, emission_standard: "Euro 5/6" },
+
+  "VW Sharan 1.6 TDI": { year: 2012, power_kw: 77, has_start_stop: true, emission_standard: "Euro 5" },
+  "VW Golf 6 1.6 TDI": { year: 2011, power_kw: 77, has_start_stop: false, emission_standard: "Euro 5", engine_code: "CAYC" },
+  "VW Golf 7 1.6 TDI": { year: 2014, power_kw: 77, has_start_stop: true, emission_standard: "Euro 5/6" },
+  "VW Passat B7 2.0 TDI": { year: 2012, power_kw: 103, has_start_stop: true, emission_standard: "Euro 5" },
+  "VW Golf 5 1.9 TDI": { year: 2006, power_kw: 77, has_start_stop: false, has_dpf: false, emission_standard: "Euro 4", engine_code: "BKC" },
+  "VW Golf 6 2.0 TDI": { year: 2011, power_kw: 103, has_start_stop: false, emission_standard: "Euro 5" },
+  "VW Touran 1.9 TDI": { year: 2007, power_kw: 77, has_start_stop: false, has_dpf: false, emission_standard: "Euro 4" },
+  "VW Passat B6 2.0 TDI": { year: 2008, power_kw: 103, has_start_stop: false, emission_standard: "Euro 4/5" },
+  "VW Golf 7 1.4 TSI": { year: 2014, power_kw: 103, has_start_stop: true, emission_standard: "Euro 6" },
+
+  "Skoda Octavia 2.0 TDI": { year: 2012, power_kw: 103, has_start_stop: false, emission_standard: "Euro 5" },
+  "Skoda Octavia 1.9 TDI": { year: 2008, power_kw: 77, has_start_stop: false, has_dpf: false, emission_standard: "Euro 4" },
+  "Skoda Superb 2.0 TDI": { year: 2013, power_kw: 125, has_start_stop: true, emission_standard: "Euro 5" },
+
+  "SEAT Alhambra 2.0 TDI": { year: 2012, power_kw: 103, has_start_stop: true, emission_standard: "Euro 5" },
+  "SEAT Leon 1.6 TDI": { year: 2013, power_kw: 77, has_start_stop: true, emission_standard: "Euro 5" },
+
+  "Mercedes W212 E220 CDI": { year: 2011, power_kw: 125, has_start_stop: true, emission_standard: "Euro 5" },
+  "Mercedes Sprinter 316 CDI": { year: 2014, power_kw: 120, has_start_stop: false, emission_standard: "Euro 5" },
+  "Mercedes W204 C220 CDI": { year: 2012, power_kw: 125, has_start_stop: true, emission_standard: "Euro 5" },
+  "Mercedes W204 C200 CDI": { year: 2011, power_kw: 100, has_start_stop: false, emission_standard: "Euro 5" },
+
+  "Opel Insignia 2.0 CDTI": { year: 2011, power_kw: 118, has_start_stop: false, emission_standard: "Euro 5" },
+  "Opel Astra J 1.7 CDTI": { year: 2012, power_kw: 81, has_start_stop: true, emission_standard: "Euro 5" },
+  "Opel Astra H 1.9 CDTI": { year: 2008, power_kw: 88, has_start_stop: false, emission_standard: "Euro 4" },
+
+  "Ford Mondeo 2.0 TDCi": { year: 2011, power_kw: 103, has_start_stop: false, emission_standard: "Euro 5" },
+  "Ford Focus 1.6 TDCi": { year: 2010, power_kw: 80, has_start_stop: false, emission_standard: "Euro 4/5" },
+  "Ford Focus 1.8 TDCi": { year: 2008, power_kw: 85, has_start_stop: false, emission_standard: "Euro 4" },
+
+  "Peugeot 308 1.6 HDi": { year: 2011, power_kw: 82, has_start_stop: false, emission_standard: "Euro 5" },
+  "Citroen C5 2.0 HDi": { year: 2011, power_kw: 103, has_start_stop: false, emission_standard: "Euro 5" },
+
+  "Renault Megane 1.5 dCi": { year: 2012, power_kw: 81, has_start_stop: false, emission_standard: "Euro 5" },
+  "Renault Laguna 2.0 dCi": { year: 2010, power_kw: 110, has_start_stop: false, emission_standard: "Euro 4/5" },
+
+  "Toyota Avensis 2.0 D-4D": { year: 2010, power_kw: 93, has_start_stop: false, emission_standard: "Euro 4/5" },
+  "Toyota Corolla 1.6 бензин": { year: 2008, power_kw: 97, has_start_stop: false, emission_standard: "Euro 4" },
+
+  "Honda Civic 2.2 i-CTDi": { year: 2008, power_kw: 103, has_start_stop: false, has_dpf: false, emission_standard: "Euro 4" },
+  "Honda Accord 2.0 benzin": { year: 2008, power_kw: 114, has_start_stop: false, emission_standard: "Euro 4" },
+
+  "Hyundai i30 1.6 CRDi": { year: 2013, power_kw: 81, has_start_stop: true, emission_standard: "Euro 5" },
+  "Kia Ceed 1.6 CRDi": { year: 2013, power_kw: 81, has_start_stop: true, emission_standard: "Euro 5" },
+};
+
+function inferMetaFromPlatform(platformType: string): VehicleTechMeta {
+  const p = platformType.toLowerCase();
+  const fuel_type = p.includes("diesel") ? "diesel" : "petrol";
+  const induction = p.includes("turbo") ? "turbo" : "na";
+  const timing_type = p.includes("chain") ? "chain" : p.includes("belt") ? "belt" : undefined;
+  const has_dpf = p.includes("_dpf_") || p.endsWith("_dpf") || p.includes("dpf");
+  return { fuel_type, induction, timing_type, has_dpf };
+}
+
+function enrichTemplate(template: RootCauseTemplate): RootCauseTemplate {
+  const inferred = inferMetaFromPlatform(template.platform_type);
+  const explicit = VEHICLE_TECH_SPECS[template.vehicle] || {};
+  return {
+    ...template,
+    ...inferred,
+    ...explicit,
+    has_dpf: explicit.has_dpf ?? inferred.has_dpf,
+  };
+}
 
 const rootCauseUsage: Record<string, number> = {};
 
@@ -600,7 +677,7 @@ function pickBalancedScenarioTemplate(): RootCauseTemplate {
   rootCauseUsage[chosen.root_cause_id] =
     (rootCauseUsage[chosen.root_cause_id] || 0) + 1;
 
-  return chosen;
+  return enrichTemplate(chosen);
 }
 
 export function getRandomScenarioSeed(): ScenarioSeed {

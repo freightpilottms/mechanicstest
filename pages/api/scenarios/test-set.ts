@@ -2,16 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { getScenariosForMode } from "../../../lib/scenario-storage";
 
 type SupportedLocale = "en" | "bs";
-
-function getLocaleFromReq(req: NextApiRequest): SupportedLocale {
-  const raw =
-    req.method === "POST"
-      ? String(req.body?.locale || req.body?.lang || "en").toLowerCase()
-      : String(req.query.locale || req.query.lang || "en").toLowerCase();
-
-  return raw === "bs" ? "bs" : "en";
-}
-
+type SupportedMode = "all" | "eu" | "us" | "asia";
 type Difficulty = "easy" | "medium" | "hard";
 
 type StoredScenario = {
@@ -24,8 +15,29 @@ type StoredScenario = {
   created_at?: string;
   locale?: string;
   language?: string;
+  year?: number;
+  power_kw?: number;
   [key: string]: any;
 };
+
+function getLocaleFromReq(req: NextApiRequest): SupportedLocale {
+  const raw =
+    req.method === "POST"
+      ? String(req.body?.locale || req.body?.lang || "en").toLowerCase()
+      : String(req.query.locale || req.query.lang || "en").toLowerCase();
+
+  return raw === "bs" ? "bs" : "en";
+}
+
+function getModeFromReq(req: NextApiRequest): SupportedMode {
+  const raw =
+    req.method === "POST"
+      ? String(req.body?.mode || "all").toLowerCase()
+      : String(req.query.mode || "all").toLowerCase();
+
+  if (raw === "eu" || raw === "us" || raw === "asia") return raw;
+  return "all";
+}
 
 function getCountFromReq(req: NextApiRequest): number {
   const raw =
@@ -37,10 +49,7 @@ function getCountFromReq(req: NextApiRequest): number {
 }
 
 function getExcludeIdsFromReq(req: NextApiRequest): string[] {
-  const raw =
-    req.method === "POST"
-      ? req.body?.excludeIds
-      : req.query.excludeIds;
+  const raw = req.method === "POST" ? req.body?.excludeIds : req.query.excludeIds;
 
   if (Array.isArray(raw)) {
     return raw.map((x) => String(x)).filter(Boolean);
@@ -111,16 +120,18 @@ function isMechanicallyCompatible(item: StoredScenario): boolean {
     /\b(spark plug|ignition coil|coil pack|svjecica|svjećica|bobina|throttle body)\b/.test(
       text
     )
-  )
+  ) {
     return false;
+  }
 
   if (
     looksPetrol &&
     /\b(dpf|diesel particulate|common rail|high-pressure diesel pump|injector pump|adblue|glow plug|grijac|grijač)\b/.test(
       text
     )
-  )
+  ) {
     return false;
+  }
 
   return true;
 }
@@ -137,23 +148,9 @@ function shuffle<T>(arr: T[]): T[] {
 function uniqueById(items: StoredScenario[]): StoredScenario[] {
   const map = new Map<string, StoredScenario>();
   for (const item of items) {
-    if (item?.id) {
-      map.set(String(item.id), item);
-    }
+    if (item?.id) map.set(String(item.id), item);
   }
   return Array.from(map.values());
-}
-
-function sortPool(items: StoredScenario[]): StoredScenario[] {
-  return [...items].sort((a, b) => {
-    const aUsed = Number(a.times_used || 0);
-    const bUsed = Number(b.times_used || 0);
-    if (aUsed !== bUsed) return aUsed - bUsed;
-
-    const aCreated = String(a.created_at || "");
-    const bCreated = String(b.created_at || "");
-    return bCreated.localeCompare(aCreated);
-  });
 }
 
 function normalizeScenarioLocale(item: StoredScenario): SupportedLocale {
@@ -161,18 +158,70 @@ function normalizeScenarioLocale(item: StoredScenario): SupportedLocale {
   return raw === "bs" ? "bs" : "en";
 }
 
-function filterByLocale(
-  items: StoredScenario[],
-  locale: SupportedLocale
-): StoredScenario[] {
+function filterByLocale(items: StoredScenario[], locale: SupportedLocale): StoredScenario[] {
   return items.filter((item) => normalizeScenarioLocale(item) === locale);
 }
 
-function filterExcluded(
-  items: StoredScenario[],
-  excludeIds: Set<string>
-): StoredScenario[] {
+function filterExcluded(items: StoredScenario[], excludeIds: Set<string>): StoredScenario[] {
   return items.filter((item) => item?.id && !excludeIds.has(String(item.id)));
+}
+
+function buildTargetDistribution(count: number) {
+  if (count <= 1) return { easy: 0, medium: 0, hard: 1 };
+  if (count === 2) return { easy: 1, medium: 0, hard: 1 };
+  if (count === 3) return { easy: 1, medium: 1, hard: 1 };
+  if (count === 4) return { easy: 1, medium: 2, hard: 1 };
+  if (count === 5) return { easy: 1, medium: 2, hard: 2 };
+  if (count === 6) return { easy: 2, medium: 2, hard: 2 };
+  if (count === 7) return { easy: 2, medium: 3, hard: 2 };
+  if (count === 8) return { easy: 2, medium: 3, hard: 3 };
+  if (count === 9) return { easy: 3, medium: 3, hard: 3 };
+  return { easy: 3, medium: 4, hard: 3 };
+}
+
+function createdAtMs(item: StoredScenario): number {
+  const ms = Date.parse(String(item.created_at || ""));
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+function pickRandom<T>(arr: T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function topScoredCandidates(
+  pool: StoredScenario[],
+  usedIds: Set<string>,
+  usedVehicles: Set<string>,
+  usedRootCauses: Set<string>
+): StoredScenario[] {
+  const available = pool.filter((item) => item?.id && !usedIds.has(String(item.id)));
+  if (!available.length) return [];
+
+  const scored = available.map((item) => {
+    const vehicle = String(item.vehicle || "").trim().toLowerCase();
+    const rootCause = String(item.root_cause_id || "").trim().toLowerCase();
+    const timesUsed = Number(item.times_used || 0);
+
+    let score = 0;
+    if (vehicle && !usedVehicles.has(vehicle)) score += 50;
+    if (rootCause && !usedRootCauses.has(rootCause)) score += 50;
+
+    // Prefer less-used scenarios, but not in a fully deterministic way.
+    score += Math.max(0, 30 - Math.min(timesUsed, 30));
+
+    // Small freshness boost, not enough to dominate everything.
+    score += Math.min(20, Math.floor(createdAtMs(item) / 86400000) % 20);
+
+    // Tiny noise so ties do not always resolve the same way.
+    score += Math.random() * 10;
+
+    return { item, score };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+  const cutoff = scored[0]?.score ?? 0;
+  const window = scored.filter((x) => x.score >= cutoff - 8).slice(0, 12);
+  return window.map((x) => x.item);
 }
 
 function pickBestCandidate(
@@ -181,29 +230,9 @@ function pickBestCandidate(
   usedVehicles: Set<string>,
   usedRootCauses: Set<string>
 ): StoredScenario | null {
-  const available = pool.filter((item) => item?.id && !usedIds.has(String(item.id)));
-  if (!available.length) return null;
-
-  const perfect = available.filter((item) => {
-    const vehicle = String(item.vehicle || "").trim().toLowerCase();
-    const rootCause = String(item.root_cause_id || "").trim().toLowerCase();
-    return !usedVehicles.has(vehicle) && !usedRootCauses.has(rootCause);
-  });
-  if (perfect.length) return perfect[0];
-
-  const noRootRepeat = available.filter((item) => {
-    const rootCause = String(item.root_cause_id || "").trim().toLowerCase();
-    return !usedRootCauses.has(rootCause);
-  });
-  if (noRootRepeat.length) return noRootRepeat[0];
-
-  const noVehicleRepeat = available.filter((item) => {
-    const vehicle = String(item.vehicle || "").trim().toLowerCase();
-    return !usedVehicles.has(vehicle);
-  });
-  if (noVehicleRepeat.length) return noVehicleRepeat[0];
-
-  return available[0];
+  const candidates = topScoredCandidates(pool, usedIds, usedVehicles, usedRootCauses);
+  if (!candidates.length) return null;
+  return pickRandom(candidates);
 }
 
 function addScenario(
@@ -230,26 +259,10 @@ function addScenario(
   return true;
 }
 
-function buildTargetDistribution(count: number) {
-  if (count <= 1) return { easy: 0, medium: 0, hard: 1 };
-  if (count === 2) return { easy: 1, medium: 0, hard: 1 };
-  if (count === 3) return { easy: 1, medium: 1, hard: 1 };
-  if (count === 4) return { easy: 1, medium: 2, hard: 1 };
-  if (count === 5) return { easy: 1, medium: 2, hard: 2 };
-  if (count === 6) return { easy: 2, medium: 2, hard: 2 };
-  if (count === 7) return { easy: 2, medium: 3, hard: 2 };
-  if (count === 8) return { easy: 2, medium: 3, hard: 3 };
-  if (count === 9) return { easy: 3, medium: 3, hard: 3 };
-  return { easy: 3, medium: 4, hard: 3 };
-}
-
-function buildTestSet(
-  allScenarios: StoredScenario[],
-  count: number
-): StoredScenario[] {
-  const easyPool = allScenarios.filter((x) => x.difficulty === "easy");
-  const mediumPool = allScenarios.filter((x) => x.difficulty === "medium");
-  const hardPool = allScenarios.filter((x) => x.difficulty === "hard");
+function buildTestSet(allScenarios: StoredScenario[], count: number): StoredScenario[] {
+  const easyPool = shuffle(allScenarios.filter((x) => x.difficulty === "easy"));
+  const mediumPool = shuffle(allScenarios.filter((x) => x.difficulty === "medium"));
+  const hardPool = shuffle(allScenarios.filter((x) => x.difficulty === "hard"));
 
   const target = buildTargetDistribution(count);
 
@@ -274,8 +287,8 @@ function buildTestSet(
   }
 
   if (selected.length < count) {
-    const remainingPool = allScenarios.filter(
-      (item) => item?.id && !usedIds.has(String(item.id))
+    const remainingPool = shuffle(
+      allScenarios.filter((item) => item?.id && !usedIds.has(String(item.id)))
     );
 
     while (selected.length < count) {
@@ -339,10 +352,12 @@ export default async function handler(
   try {
     const count = getCountFromReq(req);
     const locale = getLocaleFromReq(req);
+    const mode = getModeFromReq(req);
     const excludeIds = new Set(getExcludeIdsFromReq(req));
 
-    const allScenariosRaw = await getScenariosForMode("all", 500);
-    const allScenarios = sortPool(uniqueById(allScenariosRaw)).filter(isMechanicallyCompatible);
+    // Pull a much larger pool; limiting to 500 can hide most of the database.
+    const allScenariosRaw = await getScenariosForMode(mode, 5000);
+    const allScenarios = uniqueById(allScenariosRaw).filter(isMechanicallyCompatible);
 
     if (!allScenarios.length) {
       return res.status(404).json({
@@ -352,7 +367,6 @@ export default async function handler(
     }
 
     const localePool = filterByLocale(allScenarios, locale);
-
     let selectedResult = buildFreshFirstTestSet(localePool, count, excludeIds);
     let usedLocale = locale;
 
@@ -362,7 +376,7 @@ export default async function handler(
       usedLocale = "en";
     }
 
-    const selected = selectedResult.selected;
+    const selected = shuffle(selectedResult.selected);
 
     if (!selected.length) {
       return res.status(400).json({
@@ -387,7 +401,7 @@ export default async function handler(
 
     return res.status(200).json({
       ok: true,
-      scenarios: shuffle(selected),
+      scenarios: selected,
       meta: {
         count: selected.length,
         requested: count,
@@ -396,9 +410,12 @@ export default async function handler(
         uniqueRootCauses,
         requestedLocale: locale,
         usedLocale,
+        mode,
         excludeIdsCount: excludeIds.size,
         freshCount: selectedResult.freshCount,
         usedFallback: selectedResult.usedFallback,
+        sourcePoolCount: allScenarios.length,
+        localePoolCount: localePool.length,
       },
     });
   } catch (e: any) {

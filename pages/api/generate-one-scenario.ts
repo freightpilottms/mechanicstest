@@ -15,6 +15,8 @@ type AIResponse = {
   difficulty: "easy" | "medium" | "hard";
   title: string;
   vehicle: string;
+  year?: number;
+  power_kw?: number;
   symptoms: string[];
   driving: string[];
   extra: string[];
@@ -34,6 +36,20 @@ function getLocaleFromReq(req: NextApiRequest): SupportedLocale {
   return raw === "bs" ? "bs" : "en";
 }
 
+function normalizeText(value: string) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function uniqueStrings(items: string[]) {
+  return [...new Set(items.map((x) => String(x || "").trim()).filter(Boolean))];
+}
+
 function validateScenario(data: any): data is AIResponse {
   return (
     data &&
@@ -45,6 +61,8 @@ function validateScenario(data: any): data is AIResponse {
     ["easy", "medium", "hard"].includes(data.difficulty) &&
     typeof data.title === "string" &&
     typeof data.vehicle === "string" &&
+    (data.year === undefined || typeof data.year === "number") &&
+    (data.power_kw === undefined || typeof data.power_kw === "number") &&
     Array.isArray(data.symptoms) &&
     Array.isArray(data.driving) &&
     Array.isArray(data.extra) &&
@@ -58,6 +76,21 @@ function validateScenario(data: any): data is AIResponse {
     Array.isArray(data.partial_answers) &&
     typeof data.scoring_notes === "object"
   );
+}
+
+function buildVehicleMeta(seed: ScenarioSeed) {
+  const s = seed as any;
+  return {
+    year: typeof s.year === "number" ? s.year : undefined,
+    power_kw: typeof s.power_kw === "number" ? s.power_kw : undefined,
+    engine_code: typeof s.engine_code === "string" ? s.engine_code : undefined,
+    fuel_type: typeof s.fuel_type === "string" ? s.fuel_type : undefined,
+    induction: typeof s.induction === "string" ? s.induction : undefined,
+    timing_type: typeof s.timing_type === "string" ? s.timing_type : undefined,
+    has_start_stop: typeof s.has_start_stop === "boolean" ? s.has_start_stop : undefined,
+    has_dpf: typeof s.has_dpf === "boolean" ? s.has_dpf : undefined,
+    emission_standard: typeof s.emission_standard === "string" ? s.emission_standard : undefined,
+  };
 }
 
 function getDifficultyGuide(
@@ -215,7 +248,7 @@ SCENARIO VARIETY:
 `;
 }
 
-function buildPrompt(seed: ScenarioSeed, locale: SupportedLocale) {
+function buildPrompt(seed: ScenarioSeed, locale: SupportedLocale, attempt = 1) {
   const languageInstruction =
     locale === "bs"
       ? "Napravi JEDAN realan automobilski dijagnostički scenario na bosanskom jeziku."
@@ -239,6 +272,32 @@ function buildPrompt(seed: ScenarioSeed, locale: SupportedLocale) {
   const difficultyGuide = getDifficultyGuide(seed.difficulty, locale);
   const languageRules = getLanguageRules(locale);
   const varietyRules = getVarietyRules(locale);
+  const meta = buildVehicleMeta(seed);
+
+  const vehicleMetaBlock = `
+VEHICLE EXACT SPECIFICATION:
+- vehicle: ${seed.vehicle}
+- year: ${meta.year ?? "unknown"}
+- power_kw: ${meta.power_kw ?? "unknown"}
+- engine_code: ${meta.engine_code ?? "unknown"}
+- fuel_type: ${meta.fuel_type ?? "unknown"}
+- induction: ${meta.induction ?? "unknown"}
+- timing_type: ${meta.timing_type ?? "unknown"}
+- has_start_stop: ${meta.has_start_stop ?? "unknown"}
+- has_dpf: ${meta.has_dpf ?? "unknown"}
+- emission_standard: ${meta.emission_standard ?? "unknown"}
+`;
+
+  const retryBlock =
+    attempt > 1
+      ? `
+RETRY CORRECTION:
+- Your previous output was rejected.
+- Most likely reasons: title revealed the answer, unrealistic platform logic, or useless generic details.
+- Fix those issues now.
+- Be stricter and more realistic.
+`
+      : "";
 
   return `
 ${languageInstruction}
@@ -252,6 +311,8 @@ YOU MUST USE THESE FIXED INPUTS:
 - root_cause_id: ${seed.root_cause_id}
 - root_cause_label: ${seed.root_cause_label}
 
+${vehicleMetaBlock}
+
 SCENARIO CONTEXT (MUST BE USED):
 - Temperature condition: ${seed.context.temperature}
 - Load condition: ${seed.context.load}
@@ -263,9 +324,15 @@ STRICT RULES:
 - Only one concrete root cause, exactly the one provided above
 - Brand / vehicle / platform / category / root cause must stay compatible
 - The failure MUST be mechanically possible for the exact engine/platform type
+- Before generating, internally verify: "Is this fault realistically possible on this exact vehicle spec?"
+- If not, do not improvise and do not force it; instead rewrite the scenario so it becomes realistic for this exact vehicle and exact root cause
 - Never mention timing chain for a timing-belt engine unless that engine truly uses a chain
 - Never mention timing belt for a timing-chain engine unless that engine truly uses a belt
 - Never use diesel-only causes for petrol vehicles, and never use petrol-only causes for diesel vehicles
+- If has_start_stop is false, never mention start-stop behavior or diagnosis
+- If has_dpf is false, never build the complaint around DPF logic
+- Do not state obvious background facts that add no diagnostic value
+- Example of forbidden useless info: saying that a well-known engine uses a timing belt if that fact is not part of the diagnosis
 - Return ONLY valid JSON
 - Do not include markdown
 - Do not invent a different brand, vehicle, category, difficulty or root cause
@@ -317,6 +384,8 @@ JSON structure:
   "difficulty": "${seed.difficulty}",
   "title": "...",
   "vehicle": "${seed.vehicle}",
+  "year": ${meta.year ?? "null"},
+  "power_kw": ${meta.power_kw ?? "null"},
   "symptoms": ["..."],
   "driving": ["..."],
   "extra": ["..."],
@@ -351,7 +420,150 @@ QUALITY CHECK BEFORE RETURNING JSON:
 - accepted_answers must be rich enough for synonym recognition
 - partial_answers must support realistic partial credit
 - The case must sound like a real workshop case, not a textbook paragraph
+- Remove useless details that do not help diagnosis
+${retryBlock}
 `;
+}
+
+function collectForbiddenTitlePhrases(data: AIResponse) {
+  const raw = [
+    data.root_cause_label,
+    data.answer_main,
+    ...data.accepted_answers,
+    ...data.partial_answers,
+  ]
+    .flatMap((item) => normalizeText(item).split(" "))
+    .filter(Boolean);
+
+  const bannedSingles = [
+    "sensor",
+    "senzor",
+    "injector",
+    "dizna",
+    "dizne",
+    "pumpa",
+    "pump",
+    "turbo",
+    "egr",
+    "dpf",
+    "alternator",
+    "starter",
+    "thermostat",
+    "termostat",
+    "bearing",
+    "lezaj",
+    "bearing",
+    "injector",
+    "radilice",
+    "bregaste",
+    "crankshaft",
+    "camshaft",
+    "fuel rail",
+    "high pressure",
+  ];
+
+  return uniqueStrings([...raw, ...bannedSingles]).filter((term) => term.length >= 3);
+}
+
+function titleRevealsAnswer(data: AIResponse) {
+  const title = normalizeText(data.title);
+  if (!title) return true;
+
+  const phrases = collectForbiddenTitlePhrases(data);
+
+  for (const phrase of phrases) {
+    if (!phrase) continue;
+    if (title.includes(phrase)) return true;
+  }
+
+  return false;
+}
+
+function hasTooManyUselessDetails(data: AIResponse) {
+  const joined = normalizeText([
+    ...data.extra,
+    ...data.key_details,
+    ...data.hint,
+  ].join(" | "));
+
+  const suspicious = [
+    "timing belt",
+    "zupcasti remen",
+    "remen razvoda",
+    "timing chain",
+    "lanac razvoda",
+    "diesel engine",
+    "benzinac",
+    "dizel motor",
+  ];
+
+  let hits = 0;
+  for (const s of suspicious) {
+    if (joined.includes(normalizeText(s))) hits += 1;
+  }
+
+  return hits >= 2;
+}
+
+function sanitizeArrays(data: AIResponse): AIResponse {
+  return {
+    ...data,
+    symptoms: uniqueStrings(data.symptoms),
+    driving: uniqueStrings(data.driving),
+    extra: uniqueStrings(data.extra),
+    key_details: uniqueStrings(data.key_details),
+    questions: uniqueStrings(data.questions),
+    hint: uniqueStrings(data.hint),
+    answer_proof: uniqueStrings(data.answer_proof),
+    accepted_answers: uniqueStrings(data.accepted_answers),
+    partial_answers: uniqueStrings(data.partial_answers),
+  };
+}
+
+function scenarioMatchesSeed(data: AIResponse, seed: ScenarioSeed) {
+  return (
+    normalizeText(data.brand) === normalizeText(seed.brand) &&
+    normalizeText(data.vehicle) === normalizeText(seed.vehicle) &&
+    normalizeText(data.platform_type) === normalizeText(seed.platform_type) &&
+    normalizeText(data.category) === normalizeText(seed.category) &&
+    normalizeText(data.root_cause_id) === normalizeText(seed.root_cause_id) &&
+    normalizeText(data.root_cause_label) === normalizeText(seed.root_cause_label) &&
+    normalizeText(data.difficulty) === normalizeText(seed.difficulty)
+  );
+}
+
+async function generateScenario(openai: any, model: string, seed: ScenarioSeed, locale: SupportedLocale) {
+  let lastText = "";
+
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const response = await openai.responses.create({
+      model,
+      reasoning: { effort: attempt === 1 ? "low" : "medium" },
+      input: buildPrompt(seed, locale, attempt),
+    });
+
+    const text = response.output_text;
+    lastText = text;
+
+    let parsed: any;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      continue;
+    }
+
+    if (!validateScenario(parsed)) continue;
+
+    const clean = sanitizeArrays(parsed);
+
+    if (!scenarioMatchesSeed(clean, seed)) continue;
+    if (titleRevealsAnswer(clean)) continue;
+    if (hasTooManyUselessDetails(clean)) continue;
+
+    return clean;
+  }
+
+  throw new Error(`Scenario generation failed validation after 3 attempts. Last raw output: ${lastText}`);
 }
 
 export default async function handler(
@@ -360,25 +572,11 @@ export default async function handler(
 ) {
   try {
     const openai = getOpenAI();
-    const model = process.env.OPENAI_SCENARIO_MODEL || "gpt-5-mini";
+    const model = process.env.OPENAI_SCENARIO_MODEL || "gpt-5.4";
     const seed = getRandomScenarioSeed();
     const locale = getLocaleFromReq(req);
 
-    const response = await openai.responses.create({
-      model,
-      input: buildPrompt(seed, locale),
-    });
-
-    const text = response.output_text;
-    const parsed = JSON.parse(text);
-
-    if (!validateScenario(parsed)) {
-      return res.status(500).json({
-        ok: false,
-        error: "AI returned invalid scenario shape",
-        raw: text,
-      });
-    }
+    const parsed = await generateScenario(openai, model, seed, locale);
 
     const signature = makeScenarioSignature({
       brand: parsed.brand,
@@ -413,6 +611,7 @@ export default async function handler(
       inserted,
       signature,
       seed,
+      model,
     });
   } catch (error: any) {
     return res.status(500).json({
