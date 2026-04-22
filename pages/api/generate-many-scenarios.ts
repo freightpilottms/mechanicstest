@@ -1,3 +1,4 @@
+
 import type { NextApiRequest, NextApiResponse } from "next";
 import { getOpenAI } from "../../lib/openai";
 import {
@@ -228,41 +229,8 @@ TECHNICAL VEHICLE SPECIFICATION (MUST STAY TRUE):
 - emission_standard: ${seed.emission_standard ?? "unknown"}
 `;
 }
-function getSeedContextValues(seed: ScenarioSeed) {
-  const ctx = (seed as any)?.context || {};
 
-  return {
-    temperature:
-      ctx.temperature ??
-      ctx.temp ??
-      ctx.ambient ??
-      ctx.weather ??
-      "unknown",
-
-    load:
-      ctx.load ??
-      ctx.engine_load ??
-      ctx.driving_load ??
-      ctx.stress ??
-      "unknown",
-
-    behavior:
-      ctx.behavior ??
-      ctx.pattern ??
-      ctx.symptom_pattern ??
-      ctx.operation ??
-      "unknown",
-
-    timeline:
-      ctx.timeline ??
-      ctx.progression ??
-      ctx.when ??
-      ctx.history ??
-      "unknown",
-  };
-}
 function buildPrompt(seed: ScenarioSeed, locale: SupportedLocale) {
-  const contextValues = getSeedContextValues(seed);
   const languageInstruction =
     locale === "bs"
       ? "Napravi JEDAN realan automobilski dijagnostički scenario na bosanskom jeziku."
@@ -303,10 +271,10 @@ YOU MUST USE THESE FIXED INPUTS:
 ${technicalSpec}
 
 SCENARIO CONTEXT (MUST BE USED):
-- Temperature condition: ${contextValues.temperature}
-- Load condition: ${contextValues.load}
-- Behavior pattern: ${contextValues.behavior}
-- Failure timeline: ${contextValues.timeline}
+- Temperature condition: ${seed.context.temperature}
+- Load condition: ${seed.context.load}
+- Behavior pattern: ${seed.context.behavior}
+- Failure timeline: ${seed.context.timeline}
 
 STRICT RULES:
 - Only automotive diagnostics
