@@ -7,6 +7,7 @@ type ApiResponse =
   | { ok: false; error: string };
 
 const TABLE_NAME = "leaderboard_scores";
+const MAX_GET_ROWS = 50;
 
 export default async function handler(
   req: NextApiRequest,
@@ -24,7 +25,7 @@ export default async function handler(
         .order("avg_score", { ascending: false })
         .order("total_points", { ascending: false })
         .order("played_at", { ascending: false })
-        .limit(8);
+        .limit(MAX_GET_ROWS);
 
       if (error) {
         return res.status(200).json({ ok: true, rows: [] });

@@ -4,7 +4,6 @@ import { getMessages } from "@/lib/i18n";
 import { useLocale } from "@/lib/locale-context";
 import {
   getLocalLeaderboard,
-  getTopLocalLeaderboard,
   type LeaderboardEntry,
 } from "@/lib/leaderboard";
 
@@ -78,30 +77,32 @@ function LeaderboardCard({
         </div>
       ) : (
         <>
-          <div className="mt-5 space-y-2">
-            {rows.map((row, index) => (
-              <div
-                key={`${row.player_key}-${row.played_at}-${index}`}
-                className="grid grid-cols-[32px_minmax(0,1fr)_auto] items-center gap-3 border-b border-white/8 px-2 py-3 last:border-b-0"
-              >
-                <div className="text-xl font-semibold text-white">
-                  {index + 1}
-                </div>
+          <div className="mt-5 max-h-[392px] overflow-y-auto pr-1 [scrollbar-width:thin] [scrollbar-color:rgba(255,255,255,0.22)_transparent]">
+            <div className="space-y-2">
+              {rows.map((row, index) => (
+                <div
+                  key={`${row.player_key}-${row.played_at}-${index}`}
+                  className="grid grid-cols-[32px_minmax(0,1fr)_auto] items-center gap-3 border-b border-white/8 px-2 py-3 last:border-b-0"
+                >
+                  <div className="text-xl font-semibold text-white">
+                    {index + 1}
+                  </div>
 
-                <div className="min-w-0">
-                  <p className="truncate text-[15px] font-bold text-white">
-                    {row.player_name}
-                  </p>
-                  <p className="truncate text-sm text-zinc-400">
-                    {row.rank_label}
-                  </p>
-                </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-[15px] font-bold text-white">
+                      {row.player_name}
+                    </p>
+                    <p className="truncate text-sm text-zinc-400">
+                      {row.rank_label}
+                    </p>
+                  </div>
 
-                <div className="text-right text-[15px] font-black text-orange-400">
-                  {row.avg_score.toFixed(1)}
+                  <div className="text-right text-[15px] font-black text-orange-400">
+                    {row.avg_score.toFixed(1)}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
 
           {showYouRow && youRow ? (
@@ -135,7 +136,6 @@ export default function HomePage() {
   const t = useMemo(() => getMessages(locale), [locale]);
   const isBs = locale === "bs";
 
-  const [topLocalRows, setTopLocalRows] = useState<LeaderboardEntry[]>([]);
   const [allLocalRows, setAllLocalRows] = useState<LeaderboardEntry[]>([]);
   const [globalRows, setGlobalRows] = useState<LeaderboardEntry[]>([]);
   const [globalLoading, setGlobalLoading] = useState(true);
@@ -143,7 +143,6 @@ export default function HomePage() {
   useEffect(() => {
     const localAll = getLocalLeaderboard();
     setAllLocalRows(localAll);
-    setTopLocalRows(getTopLocalLeaderboard(8));
   }, []);
 
   useEffect(() => {
@@ -254,7 +253,6 @@ export default function HomePage() {
           </div>
         </header>
 
-        {/* JEDAN zajednički inner wrapper za sve 4 grupe */}
         <div className="mx-auto w-full max-w-[1280px]">
           <section className="grid gap-6 py-6 xl:grid-cols-2">
             <div className="rounded-[30px] border border-white/10 bg-white/5 p-6 shadow-2xl backdrop-blur-md sm:p-8">
@@ -352,7 +350,7 @@ export default function HomePage() {
           <section className="grid gap-6 pb-4 xl:grid-cols-2">
             <LeaderboardCard
               title="You vs Friends"
-              rows={topLocalRows}
+              rows={allLocalRows}
               loading={false}
               emptyText={
                 isBs ? "Još nema lokalnih rezultata." : "No local results yet."

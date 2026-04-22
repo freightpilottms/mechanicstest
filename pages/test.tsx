@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { useRouter } from "next/router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DIFFICULTY_LABELS, TIME_LIMITS, type Difficulty } from "@/lib/mock-questions";
@@ -53,9 +52,7 @@ function PreviewCard({
   buttonText: string;
   onOpen: () => void;
 }) {
-  const preview = Array.isArray(content)
-    ? content[0] || ""
-    : truncateText(content, 140);
+  const preview = Array.isArray(content) ? content[0] || "" : truncateText(content, 140);
 
   return (
     <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
@@ -177,6 +174,7 @@ function renderList(items?: string[]) {
 }
 
 const PLAYED_SCENARIOS_KEY = "mechanic_test_played_scenarios_v1";
+const LAST_ENTRY_KEY = "mechanic_test_last_entry";
 
 function readPlayedScenarioIds(): string[] {
   if (typeof window === "undefined") return [];
@@ -198,6 +196,23 @@ function writePlayedScenarioIds(ids: string[]) {
   } catch {}
 }
 
+function readLastEntryPath() {
+  if (typeof window === "undefined") return "/single-player";
+  try {
+    const raw = localStorage.getItem(LAST_ENTRY_KEY);
+    if (raw === "multiplayer" || raw === "/multiplayer") return "/multiplayer";
+    return "/single-player";
+  } catch {
+    return "/single-player";
+  }
+}
+
+function rememberLastEntry(value: string) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(LAST_ENTRY_KEY, value === "multiplayer" ? "multiplayer" : "single-player");
+  } catch {}
+}
 
 export default function TestPage() {
   const router = useRouter();
@@ -224,10 +239,33 @@ export default function TestPage() {
 
   const sessionIdRef = useRef(buildTestSessionId(testMode, locale));
   const leaderboardSubmittedRef = useRef(false);
+  const entryPathRef = useRef("/single-player");
 
   useEffect(() => {
     sessionIdRef.current = buildTestSessionId(testMode, locale);
   }, [testMode, locale]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const saved = readLastEntryPath();
+    entryPathRef.current = saved;
+
+    if (saved === "/single-player" && document.referrer) {
+      try {
+        const refUrl = new URL(document.referrer);
+        if (refUrl.origin === window.location.origin) {
+          if (refUrl.pathname.includes("/multiplayer")) {
+            rememberLastEntry("multiplayer");
+            entryPathRef.current = "/multiplayer";
+          } else if (refUrl.pathname.includes("/single-player")) {
+            rememberLastEntry("single-player");
+            entryPathRef.current = "/single-player";
+          }
+        }
+      } catch {}
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -265,18 +303,18 @@ export default function TestPage() {
 
         const playedIds = readPlayedScenarioIds();
 
-const params = new URLSearchParams({
-  count: "10",
-  locale,
-  mode: testMode,
-});
+        const params = new URLSearchParams({
+          count: "10",
+          locale,
+          mode: testMode,
+        });
 
-if (playedIds.length) {
-  params.set("excludeIds", playedIds.join(","));
-}
+        if (playedIds.length) {
+          params.set("excludeIds", playedIds.join(","));
+        }
 
-const res = await fetch(`/api/scenarios/test-set?${params.toString()}`);
-const data = await res.json();
+        const res = await fetch(`/api/scenarios/test-set?${params.toString()}`);
+        const data = await res.json();
 
         if (!res.ok || !data?.ok || !Array.isArray(data?.scenarios)) {
           throw new Error(data?.error || "Failed to load test scenarios");
@@ -286,11 +324,9 @@ const data = await res.json();
 
         const nextQuestions = data.scenarios as ScenarioQuestion[];
 
-        const fetchedIds = nextQuestions
-  .map((q: any) => q?.id)
-  .filter(Boolean);
+        const fetchedIds = nextQuestions.map((q: any) => q?.id).filter(Boolean);
+        writePlayedScenarioIds([...playedIds, ...fetchedIds]);
 
-writePlayedScenarioIds([...playedIds, ...fetchedIds]);
         const nextAnswers = nextQuestions.map(() => ({
           answer: "",
           timedOut: false,
@@ -478,11 +514,15 @@ writePlayedScenarioIds([...playedIds, ...fetchedIds]);
     }, 0);
   }
 
+  function resolveEntryPath() {
+    return entryPathRef.current || readLastEntryPath() || "/single-player";
+  }
+
   function handleQuit() {
     const confirmed = window.confirm(isBs ? "Tako lako odustaješ?" : "Giving up that easily?");
     if (!confirmed) return;
     clearActiveTestSession();
-    router.push("/single-player");
+    router.push(resolveEntryPath());
   }
 
   async function evaluateAllAnswers() {
@@ -571,9 +611,21 @@ writePlayedScenarioIds([...playedIds, ...fetchedIds]);
   const finalRank = isBs ? getRankBs(averageScore) : getRank(averageScore);
   const answeredCount = answers.filter((entry) => entry?.answer?.trim().length > 0).length;
   const timedOutCount = answers.filter((entry) => entry?.timedOut).length;
+  const aiEvaluationComplete =
+    questions.length > 0 &&
+    aiResults.length === questions.length &&
+    aiResults.every((item) => item !== null);
 
   useEffect(() => {
-    if (!finished || evaluating || !results.length || leaderboardSubmittedRef.current) return;
+    if (
+      !finished ||
+      evaluating ||
+      !results.length ||
+      leaderboardSubmittedRef.current ||
+      !aiEvaluationComplete
+    ) {
+      return;
+    }
 
     const entry: LeaderboardEntry = {
       player_key: getOrCreateLocalPlayerKey(),
@@ -609,12 +661,16 @@ writePlayedScenarioIds([...playedIds, ...fetchedIds]);
     results,
     router.query.mode,
     timedOutCount,
+    aiEvaluationComplete,
   ]);
 
   if (loading) {
     return (
       <main className="relative min-h-screen overflow-hidden bg-[#090b10] text-white">
-        <div className="absolute inset-0 scale-105 bg-cover bg-center opacity-45 blur-[9px]" style={{ backgroundImage: "url('/garage-bg.jpg')" }} />
+        <div
+          className="absolute inset-0 scale-105 bg-cover bg-center opacity-45 blur-[9px]"
+          style={{ backgroundImage: "url('/garage-bg.jpg')" }}
+        />
         <div className="absolute inset-0 bg-black/40" />
         <div className="relative mx-auto flex min-h-screen w-full max-w-7xl flex-col px-4 py-3 sm:px-6 lg:px-8">
           <div className="mx-auto mt-10 w-full max-w-[1280px] rounded-[30px] border border-white/10 bg-white/5 p-8 backdrop-blur-md">
@@ -633,7 +689,10 @@ writePlayedScenarioIds([...playedIds, ...fetchedIds]);
   if (loadError) {
     return (
       <main className="relative min-h-screen overflow-hidden bg-[#090b10] text-white">
-        <div className="absolute inset-0 scale-105 bg-cover bg-center opacity-45 blur-[9px]" style={{ backgroundImage: "url('/garage-bg.jpg')" }} />
+        <div
+          className="absolute inset-0 scale-105 bg-cover bg-center opacity-45 blur-[9px]"
+          style={{ backgroundImage: "url('/garage-bg.jpg')" }}
+        />
         <div className="absolute inset-0 bg-black/40" />
         <div className="relative mx-auto flex min-h-screen w-full max-w-7xl flex-col px-4 py-3 sm:px-6 lg:px-8">
           <div className="mx-auto mt-10 w-full max-w-[1280px] rounded-[30px] border border-red-500/20 bg-red-500/10 p-8 backdrop-blur-md">
@@ -655,12 +714,13 @@ writePlayedScenarioIds([...playedIds, ...fetchedIds]);
               >
                 {isBs ? "Pokušaj ponovo" : "Try Again"}
               </button>
-              <Link
-                href="/single-player"
+              <button
+                type="button"
+                onClick={() => router.push(resolveEntryPath())}
                 className="rounded-2xl border border-white/10 bg-black/20 px-5 py-4 text-center font-bold text-zinc-100 transition hover:bg-white/10"
               >
                 {isBs ? "Nazad" : "Back"}
-              </Link>
+              </button>
             </div>
           </div>
         </div>
@@ -673,17 +733,21 @@ writePlayedScenarioIds([...playedIds, ...fetchedIds]);
   if (finished) {
     return (
       <main className="relative min-h-screen overflow-hidden bg-[#090b10] text-white">
-        <div className="absolute inset-0 scale-105 bg-cover bg-center opacity-45 blur-[9px]" style={{ backgroundImage: "url('/garage-bg.jpg')" }} />
+        <div
+          className="absolute inset-0 scale-105 bg-cover bg-center opacity-45 blur-[9px]"
+          style={{ backgroundImage: "url('/garage-bg.jpg')" }}
+        />
         <div className="absolute inset-0 bg-black/40" />
 
         <div className="relative mx-auto flex min-h-screen w-full max-w-7xl flex-col px-4 py-3 sm:px-6 lg:px-8">
           <header className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur-md">
-            <Link
-              href="/single-player"
+            <button
+              type="button"
+              onClick={handleQuit}
               className="rounded-xl border border-white/10 bg-black/20 px-4 py-2 text-sm font-semibold text-zinc-200 transition hover:bg-white/10"
             >
               ← {isBs ? "Nazad" : "Back"}
-            </Link>
+            </button>
             <h1 className="text-xl font-bold">{isBs ? "Rezultati testa" : "Test Results"}</h1>
           </header>
 
@@ -706,16 +770,24 @@ writePlayedScenarioIds([...playedIds, ...fetchedIds]);
 
                 <div className="mt-8 grid gap-4 sm:grid-cols-3">
                   <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                    <p className="text-xs uppercase tracking-[0.2em] text-zinc-400">{isBs ? "Prosjek" : "Average"}</p>
+                    <p className="text-xs uppercase tracking-[0.2em] text-zinc-400">
+                      {isBs ? "Prosjek" : "Average"}
+                    </p>
                     <p className="mt-2 text-3xl font-black text-white">{averageScore.toFixed(1)}</p>
                   </div>
                   <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                    <p className="text-xs uppercase tracking-[0.2em] text-zinc-400">{isBs ? "Rank" : "Rank"}</p>
+                    <p className="text-xs uppercase tracking-[0.2em] text-zinc-400">
+                      {isBs ? "Rank" : "Rank"}
+                    </p>
                     <p className="mt-2 text-2xl font-black text-orange-300">{finalRank}</p>
                   </div>
                   <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                    <p className="text-xs uppercase tracking-[0.2em] text-zinc-400">{isBs ? "Odgovoreno" : "Answered"}</p>
-                    <p className="mt-2 text-3xl font-black text-white">{answeredCount}/{results.length}</p>
+                    <p className="text-xs uppercase tracking-[0.2em] text-zinc-400">
+                      {isBs ? "Odgovoreno" : "Answered"}
+                    </p>
+                    <p className="mt-2 text-3xl font-black text-white">
+                      {answeredCount}/{results.length}
+                    </p>
                   </div>
                 </div>
 
@@ -724,18 +796,19 @@ writePlayedScenarioIds([...playedIds, ...fetchedIds]);
                     type="button"
                     onClick={() => {
                       clearActiveTestSession();
-                      router.replace(`/test?mode=${encodeURIComponent(testMode)}`);
+                      router.push(resolveEntryPath());
                     }}
                     className="rounded-2xl bg-orange-500 px-5 py-4 font-bold text-black transition hover:bg-orange-400"
                   >
                     {isBs ? "Igraj ponovo" : "Play Again"}
                   </button>
-                  <Link
-                    href="/single-player"
+                  <button
+                    type="button"
+                    onClick={() => router.push(resolveEntryPath())}
                     className="rounded-2xl border border-white/10 bg-black/20 px-5 py-4 text-center font-bold text-zinc-100 transition hover:bg-white/10"
                   >
                     {isBs ? "Promijeni mod" : "Change Mode"}
-                  </Link>
+                  </button>
                 </div>
               </div>
 
@@ -751,16 +824,22 @@ writePlayedScenarioIds([...playedIds, ...fetchedIds]);
 
                 <div className="mt-7 space-y-4">
                   <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-zinc-200">
-                    {isBs ? "Mod" : "Mode"}: <span className="font-bold text-white">{modeLabel(testMode, isBs)}</span>
+                    {isBs ? "Mod" : "Mode"}:{" "}
+                    <span className="font-bold text-white">{modeLabel(testMode, isBs)}</span>
                   </div>
                   <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-zinc-200">
-                    {isBs ? "Pitanja" : "Questions"}: <span className="font-bold text-white">{results.length}</span>
+                    {isBs ? "Pitanja" : "Questions"}:{" "}
+                    <span className="font-bold text-white">{results.length}</span>
                   </div>
                   <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-zinc-200">
-                    {isBs ? "Isteklo vremena" : "Timed Out"}: <span className="font-bold text-white">{timedOutCount}</span>
+                    {isBs ? "Isteklo vremena" : "Timed Out"}:{" "}
+                    <span className="font-bold text-white">{timedOutCount}</span>
                   </div>
                   <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-zinc-200">
-                    {isBs ? "AI evaluacija" : "AI Evaluation"}: <span className="font-bold text-white">{evaluating ? (isBs ? "U toku..." : "In progress...") : (isBs ? "Završeno" : "Completed")}</span>
+                    {isBs ? "AI evaluacija" : "AI Evaluation"}:{" "}
+                    <span className="font-bold text-white">
+                      {evaluating ? (isBs ? "U toku..." : "In progress...") : (isBs ? "Završeno" : "Completed")}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -776,10 +855,14 @@ writePlayedScenarioIds([...playedIds, ...fetchedIds]);
                     <div className="rounded-full border border-white/10 bg-black/20 px-4 py-2 text-sm font-semibold text-zinc-200">
                       {isBs ? "Pitanje" : "Question"} {index + 1}
                     </div>
-                    <div className={`rounded-full border px-4 py-2 text-sm font-semibold ${difficultyBadgeClasses(item.question.difficulty)}`}>
+                    <div
+                      className={`rounded-full border px-4 py-2 text-sm font-semibold ${difficultyBadgeClasses(item.question.difficulty)}`}
+                    >
                       {getDifficultyText(item.question.difficulty, isBs)}
                     </div>
-                    <div className={`rounded-full border px-4 py-2 text-sm font-semibold ${verdictChip(item.evaluation.verdict)}`}>
+                    <div
+                      className={`rounded-full border px-4 py-2 text-sm font-semibold ${verdictChip(item.evaluation.verdict)}`}
+                    >
                       {verdictText(item.evaluation.verdict, isBs)}
                     </div>
                     <div className="ml-auto rounded-full border border-orange-500/30 bg-orange-500/10 px-4 py-2 text-sm font-bold text-orange-300">
@@ -790,20 +873,26 @@ writePlayedScenarioIds([...playedIds, ...fetchedIds]);
                   <div className="mt-5 grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
                     <div className="space-y-4">
                       <div>
-                        <p className="text-xs uppercase tracking-[0.22em] text-orange-400">{isBs ? "Vozilo" : "Vehicle"}</p>
+                        <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
+                          {isBs ? "Vozilo" : "Vehicle"}
+                        </p>
                         <p className="mt-2 text-lg font-bold text-white">{item.question.vehicle || "—"}</p>
                       </div>
 
                       {item.question.title ? (
                         <div>
-                          <p className="text-xs uppercase tracking-[0.22em] text-orange-400">{isBs ? "Scenario" : "Scenario"}</p>
+                          <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
+                            {isBs ? "Scenario" : "Scenario"}
+                          </p>
                           <p className="mt-2 text-zinc-200">{item.question.title}</p>
                         </div>
                       ) : null}
 
                       {renderList(item.question.symptoms) ? (
                         <div>
-                          <p className="text-xs uppercase tracking-[0.22em] text-orange-400">{isBs ? "Simptomi" : "Symptoms"}</p>
+                          <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
+                            {isBs ? "Simptomi" : "Symptoms"}
+                          </p>
                           <div className="mt-2">{renderList(item.question.symptoms)}</div>
                         </div>
                       ) : null}
@@ -811,7 +900,9 @@ writePlayedScenarioIds([...playedIds, ...fetchedIds]);
 
                     <div className="space-y-4">
                       <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                        <p className="text-xs uppercase tracking-[0.22em] text-orange-400">{isBs ? "Tvoj odgovor" : "Your Answer"}</p>
+                        <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
+                          {isBs ? "Tvoj odgovor" : "Your Answer"}
+                        </p>
                         <p className="mt-3 whitespace-pre-wrap text-zinc-100">
                           {item.answerState.answer?.trim()
                             ? item.answerState.answer
@@ -822,24 +913,34 @@ writePlayedScenarioIds([...playedIds, ...fetchedIds]);
                       </div>
 
                       <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                        <p className="text-xs uppercase tracking-[0.22em] text-orange-400">{isBs ? "Povratna informacija" : "Feedback"}</p>
+                        <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
+                          {isBs ? "Povratna informacija" : "Feedback"}
+                        </p>
                         <p className="mt-3 text-zinc-200">{item.evaluation.feedback}</p>
                       </div>
 
                       <div className="grid gap-3 sm:grid-cols-2">
                         <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                          <p className="text-xs uppercase tracking-[0.22em] text-zinc-400">{isBs ? "Dijagnoza" : "Diagnosis"}</p>
-                          <p className="mt-2 text-2xl font-black text-white">{item.evaluation.diagnosisPercent}%</p>
+                          <p className="text-xs uppercase tracking-[0.22em] text-zinc-400">
+                            {isBs ? "Dijagnoza" : "Diagnosis"}
+                          </p>
+                          <p className="mt-2 text-2xl font-black text-white">
+                            {item.evaluation.diagnosisPercent}%
+                          </p>
                         </div>
                         <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                          <p className="text-xs uppercase tracking-[0.22em] text-zinc-400">{isBs ? "Bonus" : "Bonus"}</p>
+                          <p className="text-xs uppercase tracking-[0.22em] text-zinc-400">
+                            {isBs ? "Bonus" : "Bonus"}
+                          </p>
                           <p className="mt-2 text-2xl font-black text-white">+{item.evaluation.bonus}</p>
                         </div>
                       </div>
 
                       {item.evaluation.matchedCause ? (
                         <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                          <p className="text-xs uppercase tracking-[0.22em] text-orange-400">{isBs ? "Prepoznat uzrok" : "Matched Cause"}</p>
+                          <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
+                            {isBs ? "Prepoznat uzrok" : "Matched Cause"}
+                          </p>
                           <p className="mt-3 text-zinc-100">{item.evaluation.matchedCause}</p>
                         </div>
                       ) : null}
@@ -897,9 +998,7 @@ writePlayedScenarioIds([...playedIds, ...fetchedIds]);
               <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 px-4">
                 <div className="w-full max-w-2xl rounded-[28px] border border-white/10 bg-[#11151c] p-5 shadow-2xl backdrop-blur-md sm:p-6">
                   <div className="flex items-center justify-between gap-4">
-                    <h3 className="text-2xl font-black tracking-tight text-white">
-                      {detailModal.title}
-                    </h3>
+                    <h3 className="text-2xl font-black tracking-tight text-white">{detailModal.title}</h3>
 
                     <button
                       type="button"
@@ -935,6 +1034,27 @@ writePlayedScenarioIds([...playedIds, ...fetchedIds]);
             <footer className="pb-2 pt-4 text-center text-xs tracking-[0.14em] text-zinc-500">
               © ZEDA&apos;S Group LTD | AK Solutions
             </footer>
+
+            {evaluating ? (
+              <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/45 px-4 backdrop-blur-md">
+                <div className="w-full max-w-md rounded-[28px] border border-white/10 bg-[#11151c]/95 p-6 text-center shadow-2xl">
+                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-orange-500/30 bg-orange-500/10 text-2xl text-orange-300">
+                    ⊕
+                  </div>
+                  <p className="mt-5 text-[11px] font-semibold uppercase tracking-[0.24em] text-orange-400">
+                    AI Evaluation
+                  </p>
+                  <h3 className="mt-3 text-3xl font-black tracking-tight text-white">
+                    {isBs ? "AI evaluacija u toku..." : "AI evaluation in progress..."}
+                  </h3>
+                  <p className="mt-3 text-sm leading-6 text-zinc-300">
+                    {isBs
+                      ? "Sačekaj nekoliko trenutaka dok AI pregleda sve odgovore i izračuna finalni rezultat."
+                      : "Please wait a few moments while AI reviews all answers and calculates the final score."}
+                  </p>
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       </main>
@@ -943,7 +1063,10 @@ writePlayedScenarioIds([...playedIds, ...fetchedIds]);
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#090b10] text-white">
-      <div className="absolute inset-0 scale-105 bg-cover bg-center opacity-45 blur-[9px]" style={{ backgroundImage: "url('/garage-bg.jpg')" }} />
+      <div
+        className="absolute inset-0 scale-105 bg-cover bg-center opacity-45 blur-[9px]"
+        style={{ backgroundImage: "url('/garage-bg.jpg')" }}
+      />
       <div className="absolute inset-0 bg-black/40" />
 
       {showFloatingTimer ? (
@@ -954,12 +1077,13 @@ writePlayedScenarioIds([...playedIds, ...fetchedIds]);
 
       <div className="relative mx-auto flex min-h-screen w-full max-w-7xl flex-col px-4 py-3 sm:px-6 lg:px-8">
         <header className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur-md">
-          <Link
-            href="/single-player"
+          <button
+            type="button"
+            onClick={handleQuit}
             className="rounded-xl border border-white/10 bg-black/20 px-4 py-2 text-sm font-semibold text-zinc-200 transition hover:bg-white/10"
           >
             ← {isBs ? "Nazad" : "Back"}
-          </Link>
+          </button>
 
           <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm font-semibold text-zinc-200">
             <span>{modeLabel(testMode, isBs)}</span>
@@ -1029,11 +1153,7 @@ writePlayedScenarioIds([...playedIds, ...fetchedIds]);
                 <div className="mt-3 h-3 overflow-hidden rounded-full bg-white/10">
                   <div
                     className={`h-full rounded-full transition-all ${
-                      timerCritical
-                        ? "bg-red-400"
-                        : timerWarning
-                        ? "bg-yellow-400"
-                        : "bg-orange-500"
+                      timerCritical ? "bg-red-400" : timerWarning ? "bg-yellow-400" : "bg-orange-500"
                     }`}
                     style={{ width: `${progress}%` }}
                   />
@@ -1153,11 +1273,7 @@ writePlayedScenarioIds([...playedIds, ...fetchedIds]);
                     <div className="mt-3 h-3 overflow-hidden rounded-full bg-white/10">
                       <div
                         className={`h-full rounded-full transition-all ${
-                          timerCritical
-                            ? "bg-red-400"
-                            : timerWarning
-                            ? "bg-yellow-400"
-                            : "bg-orange-500"
+                          timerCritical ? "bg-red-400" : timerWarning ? "bg-yellow-400" : "bg-orange-500"
                         }`}
                         style={{ width: `${Math.max(0, Math.min(100, timerPercent))}%` }}
                       />
