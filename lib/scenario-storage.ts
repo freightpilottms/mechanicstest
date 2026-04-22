@@ -1,9 +1,6 @@
 import { getSupabaseAdmin } from "./supabase-admin";
 
-export async function getScenariosForMode(
-  mode: SupportedMode,
-  limit = 100
-)
+export type SupportedMode = "all" | "eu" | "us" | "asia";
 
 export type StoredScenario = {
   id?: string;
@@ -150,8 +147,8 @@ export async function insertScenario(scenario: StoredScenario) {
     partial_answers: scenario.partial_answers,
     scoring_notes: scenario.scoring_notes,
     signature: scenario.signature,
-    locale: scenario.locale || scenario.language || "en",
-    language: scenario.language || scenario.locale || "en",
+    locale: scenario.locale || scenario.language || scenario.lang || "en",
+    language: scenario.language || scenario.locale || scenario.lang || "en",
   };
 
   const { data, error } = await supabase
@@ -181,30 +178,6 @@ export async function findScenarioBySignature(signature: string) {
   }
 
   return data;
-}
-
-
-export async function findScenarioByFingerprint(rootCauseId: string, locale?: string) {
-  const supabase = getSupabaseAdmin();
-
-  let query = supabase
-    .from("scenarios")
-    .select("id, root_cause_id, locale, vehicle, title, created_at")
-    .eq("root_cause_id", rootCauseId)
-    .order("created_at", { ascending: false })
-    .limit(25);
-
-  if (locale) {
-    query = query.eq("locale", locale);
-  }
-
-  const { data, error } = await query;
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return data || [];
 }
 
 export async function getScenarioById(id: string) {
@@ -242,7 +215,7 @@ export async function getLatestScenario() {
 
 export async function getScenariosForMode(
   mode: SupportedMode = "all",
-  limit = 10,
+  limit = 100,
   locale?: string
 ) {
   const supabase = getSupabaseAdmin();
