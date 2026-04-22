@@ -212,7 +212,21 @@ export async function getLatestScenario() {
 
   return data;
 }
+export async function findScenarioByFingerprint(fingerprint: string) {
+  const supabase = getSupabaseAdmin();
 
+  const { data, error } = await supabase
+    .from("scenarios")
+    .select("id, signature, fingerprint")
+    .eq("fingerprint", fingerprint)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data;
+}
 export async function getScenariosForMode(
   mode: SupportedMode = "all",
   limit = 100,
