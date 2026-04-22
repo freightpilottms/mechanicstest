@@ -1,8 +1,14 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { getOpenAI } from "../../lib/openai";
-import { insertScenario, findScenarioBySignature, findScenarioByFingerprint } from "../../lib/scenario-storage";
-import { makeScenarioSignature, buildScenarioFingerprint } from "../../lib/scenario-signature";
-import { getRandomScenarioSeed, type ScenarioSeed } from "../../lib/scenario-seeds";
+import {
+  insertScenario,
+  findScenarioBySignature,
+} from "../../lib/scenario-storage";
+import { makeScenarioSignature } from "../../lib/scenario-signature";
+import {
+  getRandomScenarioSeed,
+  type ScenarioSeed,
+} from "../../lib/scenario-seeds";
 
 type SupportedLocale = "en" | "bs";
 
@@ -17,6 +23,13 @@ type AIResponse = {
   vehicle: string;
   year?: number;
   power_kw?: number;
+  engine_code?: string;
+  fuel_type?: string;
+  induction?: string;
+  timing_type?: string;
+  has_start_stop?: boolean;
+  has_dpf?: boolean;
+  emission_standard?: string;
   symptoms: string[];
   driving: string[];
   extra: string[];
@@ -36,61 +49,24 @@ function getLocaleFromReq(req: NextApiRequest): SupportedLocale {
   return raw === "bs" ? "bs" : "en";
 }
 
-function normalizeText(value: string) {
+function uniqueStrings(arr: any[]) {
+  return Array.from(
+    new Set(
+      (arr || [])
+        .map((v) => String(v || "").trim())
+        .filter(Boolean)
+    )
+  );
+}
+
+function normalizeText(value: any) {
   return String(value || "")
     .toLowerCase()
-    .normalize("NFKD")
+    .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-function uniqueStrings(items: string[]) {
-  return [...new Set(items.map((x) => String(x || "").trim()).filter(Boolean))];
-}
-
-function validateScenario(data: any): data is AIResponse {
-  return (
-    data &&
-    typeof data.brand === "string" &&
-    typeof data.platform_type === "string" &&
-    typeof data.category === "string" &&
-    typeof data.root_cause_id === "string" &&
-    typeof data.root_cause_label === "string" &&
-    ["easy", "medium", "hard"].includes(data.difficulty) &&
-    typeof data.title === "string" &&
-    typeof data.vehicle === "string" &&
-    (data.year === undefined || typeof data.year === "number") &&
-    (data.power_kw === undefined || typeof data.power_kw === "number") &&
-    Array.isArray(data.symptoms) &&
-    Array.isArray(data.driving) &&
-    Array.isArray(data.extra) &&
-    Array.isArray(data.key_details) &&
-    Array.isArray(data.questions) &&
-    Array.isArray(data.hint) &&
-    typeof data.answer_main === "string" &&
-    typeof data.answer_why_no_code === "string" &&
-    Array.isArray(data.answer_proof) &&
-    Array.isArray(data.accepted_answers) &&
-    Array.isArray(data.partial_answers) &&
-    typeof data.scoring_notes === "object"
-  );
-}
-
-function buildVehicleMeta(seed: ScenarioSeed) {
-  const s = seed as any;
-  return {
-    year: typeof s.year === "number" ? s.year : undefined,
-    power_kw: typeof s.power_kw === "number" ? s.power_kw : undefined,
-    engine_code: typeof s.engine_code === "string" ? s.engine_code : undefined,
-    fuel_type: typeof s.fuel_type === "string" ? s.fuel_type : undefined,
-    induction: typeof s.induction === "string" ? s.induction : undefined,
-    timing_type: typeof s.timing_type === "string" ? s.timing_type : undefined,
-    has_start_stop: typeof s.has_start_stop === "boolean" ? s.has_start_stop : undefined,
-    has_dpf: typeof s.has_dpf === "boolean" ? s.has_dpf : undefined,
-    emission_standard: typeof s.emission_standard === "string" ? s.emission_standard : undefined,
-  };
 }
 
 function getDifficultyGuide(
@@ -172,27 +148,6 @@ JEZIK I TERMINOLOGIJA:
 - Ne miješaj engleski i bosanski
 - Ne koristi bukvalno prevedene izraze iz engleskog
 - Piši kao da iskusan mehaničar opisuje kvar drugom mehaničaru
-- Koristi prirodne izraze kao:
-  - ler
-  - preskakanje paljenja
-  - motanje volana
-  - motanje u krug
-  - hučanje
-  - kliktanje
-  - zveckanje
-  - curenje rashladne tečnosti
-  - gubitak pritiska turbine
-- Izbjegavaj neprirodne fraze poput:
-  - full lock
-  - rough idle
-  - boost leak
-  - misfire
-  - low boost
-- Primjer loše fraze:
-  "Zveckanje pri motanju u pun lock"
-- Primjer dobre fraze:
-  "Zveckanje pri punom motanju volana"
-  "Preskakanje pri motanju u krug"
 `;
   }
 
@@ -209,61 +164,42 @@ function getVarietyRules(locale: SupportedLocale) {
     return `
 RAZNOLIKOST SCENARIJA:
 - Nemoj praviti scenarije koji se stalno vrte oko zraka, goriva i istih senzora
-- Daj realnu raznolikost između ovih grupa kvarova:
-  - hlađenje i gubitak rashladne tečnosti
-  - dihtung glave i unutrašnji kvarovi motora
-  - turbo / vakuum / usis / EGR / DPF
-  - gorivo i pritisak goriva
-  - paljenje / sinkronizacija / senzori
-  - ležaj točka
-  - kinetički zglob
-  - nosači motora / mjenjača
-  - ovjes / seleni / kugle / stabilizator
-  - kočnice / diskovi / kliješta / ABS
-  - elektrika / mase / akumulator / alternator / starter
-- Neki scenariji smiju imati DTC kod kao hint
-- Neki scenariji ne smiju imati nikakav DTC
-- Neki scenariji smiju imati DTC koji nije dovoljan da direktno otkrije odgovor
+- Koristi i mehaničke kvarove bez ECU grešaka
 `;
   }
 
   return `
 SCENARIO VARIETY:
 - Do not overuse air-flow, fuel-flow, and generic sensor scenarios
-- Create realistic variety across:
-  - cooling system and coolant loss
-  - head gasket and internal engine faults
-  - turbo / vacuum / intake / EGR / DPF
-  - fuel delivery and pressure
-  - ignition / synchronization / sensor issues
-  - wheel bearing
-  - CV joint
-  - engine mounts / transmission mounts
-  - suspension / bushings / ball joints / stabilizer links
-  - brakes / discs / calipers / ABS
-  - electrical / grounds / battery / alternator / starter
-- Some scenarios may include a DTC as a hint
-- Some scenarios should have no DTC at all
-- Some scenarios may include a DTC that is incomplete or only partially helpful
+- Use mechanical failures too, not just ECU-related systems
+`;
+}
+
+function buildVehicleMetaBlock(seed: ScenarioSeed) {
+  return `
+TECHNICAL VEHICLE SPECIFICATION (MUST STAY TRUE):
+- vehicle: ${seed.vehicle}
+- year: ${seed.year ?? "unknown"}
+- power_kw: ${seed.power_kw ?? "unknown"}
+- engine_code: ${seed.engine_code ?? "unknown"}
+- fuel_type: ${seed.fuel_type ?? "unknown"}
+- induction: ${seed.induction ?? "unknown"}
+- timing_type: ${seed.timing_type ?? "unknown"}
+- has_start_stop: ${typeof seed.has_start_stop === "boolean" ? String(seed.has_start_stop) : "unknown"}
+- has_dpf: ${typeof seed.has_dpf === "boolean" ? String(seed.has_dpf) : "unknown"}
+- emission_standard: ${seed.emission_standard ?? "unknown"}
 `;
 }
 
 function buildPrompt(seed: ScenarioSeed, locale: SupportedLocale, attempt = 1) {
-  const languageInstruction =
-    locale === "bs"
-      ? "Napravi JEDAN realan automobilski dijagnostički scenario na bosanskom jeziku."
-      : "Generate ONE realistic automotive diagnostic scenario in English.";
-
   const question1 =
     locale === "bs"
       ? "Najvjerovatniji uzrok (1 konkretna stvar)"
       : "Most likely cause (1 specific thing)";
-
   const question2 =
     locale === "bs"
       ? "Zašto ECU ne baca grešku"
       : "Why the ECU does not set a fault code";
-
   const question3 =
     locale === "bs"
       ? "Kako bi to dokazao u praksi"
@@ -272,35 +208,29 @@ function buildPrompt(seed: ScenarioSeed, locale: SupportedLocale, attempt = 1) {
   const difficultyGuide = getDifficultyGuide(seed.difficulty, locale);
   const languageRules = getLanguageRules(locale);
   const varietyRules = getVarietyRules(locale);
-  const meta = buildVehicleMeta(seed);
-
-  const vehicleMetaBlock = `
-VEHICLE EXACT SPECIFICATION:
-- vehicle: ${seed.vehicle}
-- year: ${meta.year ?? "unknown"}
-- power_kw: ${meta.power_kw ?? "unknown"}
-- engine_code: ${meta.engine_code ?? "unknown"}
-- fuel_type: ${meta.fuel_type ?? "unknown"}
-- induction: ${meta.induction ?? "unknown"}
-- timing_type: ${meta.timing_type ?? "unknown"}
-- has_start_stop: ${meta.has_start_stop ?? "unknown"}
-- has_dpf: ${meta.has_dpf ?? "unknown"}
-- emission_standard: ${meta.emission_standard ?? "unknown"}
-`;
+  const vehicleMetaBlock = buildVehicleMetaBlock(seed);
 
   const retryBlock =
     attempt > 1
-      ? `
-RETRY CORRECTION:
-- Your previous output was rejected.
-- Most likely reasons: title revealed the answer, unrealistic platform logic, or useless generic details.
-- Fix those issues now.
-- Be stricter and more realistic.
+      ? locale === "bs"
+        ? `
+DODATNA NAPOMENA:
+- Prethodni pokušaj nije prošao validaciju.
+- Posebno vodi računa da naslov ne otkriva odgovor.
+- Ukloni sve nepotrebne detalje koji ne pomažu dijagnostici.
+`
+        : `
+ADDITIONAL NOTE:
+- A previous attempt failed validation.
+- Be especially careful that the title does not reveal the answer.
+- Remove useless details that do not help diagnosis.
 `
       : "";
 
   return `
-${languageInstruction}
+${locale === "bs"
+  ? "Napravi JEDAN realan automobilski dijagnostički scenario na bosanskom jeziku."
+  : "Generate ONE realistic automotive diagnostic scenario in English."}
 
 YOU MUST USE THESE FIXED INPUTS:
 - brand: ${seed.brand}
@@ -318,10 +248,10 @@ SCENARIO CONTEXT (MUST BE USED):
 - Trigger family: ${seed.context.trigger_family}
 - Vehicle mode: ${seed.context.mode}
 - Fault family label: ${
-  locale === "bs"
-    ? seed.context.faultSeed.family_label_bs
-    : seed.context.faultSeed.family_label_en
-}
+    locale === "bs"
+      ? seed.context.faultSeed.family_label_bs
+      : seed.context.faultSeed.family_label_en
+  }
 
 STRICT RULES:
 - Only automotive diagnostics
@@ -336,7 +266,6 @@ STRICT RULES:
 - If has_start_stop is false, never mention start-stop behavior or diagnosis
 - If has_dpf is false, never build the complaint around DPF logic
 - Do not state obvious background facts that add no diagnostic value
-- Example of forbidden useless info: saying that a well-known engine uses a timing belt if that fact is not part of the diagnosis
 - Return ONLY valid JSON
 - Do not include markdown
 - Do not invent a different brand, vehicle, category, difficulty or root cause
@@ -345,20 +274,6 @@ STRICT RULES:
 - Do NOT make the case absurd or impossible
 - Do NOT write a trick question
 - Do NOT reveal the answer in the title
-- The title must describe the COMPLAINT or SYMPTOM CONTEXT only
-- The title must NOT contain:
-  - the failed component
-  - the exact diagnosis
-  - the DTC code
-  - the repair
-- Bad title example:
-  "Neispravan senzor radilice izaziva gašenje"
-- Good title example:
-  "Gašenje toplog motora nakon kraćeg zadržavanja"
-- Bad title example:
-  "Wheel bearing noise at speed"
-- Good title example:
-  "Hučanje koje raste sa brzinom i mijenja se u krivini"
 
 ${languageRules}
 
@@ -371,13 +286,6 @@ QUESTIONS MUST BE EXACTLY:
 2. ${question2}
 3. ${question3}
 
-ACCEPTED ANSWERS / PARTIAL ANSWERS RULES:
-- accepted_answers must contain realistic synonyms, mechanic-style paraphrases, and natural alternative phrasings for the SAME root cause
-- partial_answers must contain close but incomplete answers that deserve partial credit
-- Do not repeat the exact same phrase many times
-- Make accepted_answers useful for semantic scoring
-- Make partial_answers useful for near-miss scoring
-
 JSON structure:
 {
   "brand": "${seed.brand}",
@@ -388,8 +296,15 @@ JSON structure:
   "difficulty": "${seed.difficulty}",
   "title": "...",
   "vehicle": "${seed.vehicle}",
-  "year": ${meta.year ?? "null"},
-  "power_kw": ${meta.power_kw ?? "null"},
+  "year": ${seed.year ?? "null"},
+  "power_kw": ${seed.power_kw ?? "null"},
+  "engine_code": ${seed.engine_code ? `"${seed.engine_code}"` : "null"},
+  "fuel_type": ${seed.fuel_type ? `"${seed.fuel_type}"` : "null"},
+  "induction": ${seed.induction ? `"${seed.induction}"` : "null"},
+  "timing_type": ${seed.timing_type ? `"${seed.timing_type}"` : "null"},
+  "has_start_stop": ${typeof seed.has_start_stop === "boolean" ? String(seed.has_start_stop) : "null"},
+  "has_dpf": ${typeof seed.has_dpf === "boolean" ? String(seed.has_dpf) : "null"},
+  "emission_standard": ${seed.emission_standard ? `"${seed.emission_standard}"` : "null"},
   "symptoms": ["..."],
   "driving": ["..."],
   "extra": ["..."],
@@ -415,18 +330,34 @@ JSON structure:
   }
 }
 
-QUALITY CHECK BEFORE RETURNING JSON:
-- The title must NOT reveal the diagnosis
-- The language must be consistent and natural
-- The scenario must not feel generic
-- The provided context must clearly influence the complaint and story
-- The root cause must remain exactly the same as provided
-- accepted_answers must be rich enough for synonym recognition
-- partial_answers must support realistic partial credit
-- The case must sound like a real workshop case, not a textbook paragraph
-- Remove useless details that do not help diagnosis
 ${retryBlock}
 `;
+}
+
+function validateScenario(data: any): data is AIResponse {
+  return (
+    data &&
+    typeof data.brand === "string" &&
+    typeof data.platform_type === "string" &&
+    typeof data.category === "string" &&
+    typeof data.root_cause_id === "string" &&
+    typeof data.root_cause_label === "string" &&
+    ["easy", "medium", "hard"].includes(data.difficulty) &&
+    typeof data.title === "string" &&
+    typeof data.vehicle === "string" &&
+    Array.isArray(data.symptoms) &&
+    Array.isArray(data.driving) &&
+    Array.isArray(data.extra) &&
+    Array.isArray(data.key_details) &&
+    Array.isArray(data.questions) &&
+    Array.isArray(data.hint) &&
+    typeof data.answer_main === "string" &&
+    typeof data.answer_why_no_code === "string" &&
+    Array.isArray(data.answer_proof) &&
+    Array.isArray(data.accepted_answers) &&
+    Array.isArray(data.partial_answers) &&
+    typeof data.scoring_notes === "object"
+  );
 }
 
 function collectForbiddenTitlePhrases(data: AIResponse) {
@@ -456,8 +387,7 @@ function collectForbiddenTitlePhrases(data: AIResponse) {
     "termostat",
     "bearing",
     "lezaj",
-    "bearing",
-    "injector",
+    "ležaj",
     "radilice",
     "bregaste",
     "crankshaft",
@@ -484,11 +414,7 @@ function titleRevealsAnswer(data: AIResponse) {
 }
 
 function hasTooManyUselessDetails(data: AIResponse) {
-  const joined = normalizeText([
-    ...data.extra,
-    ...data.key_details,
-    ...data.hint,
-  ].join(" | "));
+  const joined = normalizeText([...data.extra, ...data.key_details, ...data.hint].join(" | "));
 
   const suspicious = [
     "timing belt",
@@ -599,34 +525,6 @@ export default async function handler(
         message: "Scenario already exists",
         existing,
         signature,
-        seed,
-      });
-    }
-
-    const fingerprint = buildScenarioFingerprint({
-      locale,
-      brand: parsed.brand,
-      vehicle: parsed.vehicle,
-      rootCauseId: parsed.root_cause_id,
-      symptoms: parsed.symptoms,
-      questions: parsed.questions,
-      answerMain: parsed.answer_main,
-    });
-
-    const nearby = await findScenarioByFingerprint(parsed.root_cause_id, locale);
-    const duplicateLike = nearby.find((row: any) => {
-      const hay = JSON.stringify([row?.vehicle, row?.title]).toLowerCase();
-      const parts = fingerprint.toLowerCase().split("::").slice(-3).filter(Boolean);
-      return parts.length >= 2 && parts.every((p) => p && hay.includes(p.slice(0, Math.min(p.length, 18))));
-    });
-
-    if (duplicateLike) {
-      return res.status(200).json({
-        ok: true,
-        message: "Scenario too similar to an existing one",
-        existing: duplicateLike,
-        signature,
-        fingerprint,
         seed,
       });
     }
