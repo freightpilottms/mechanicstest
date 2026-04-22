@@ -1,6 +1,9 @@
 import { getSupabaseAdmin } from "./supabase-admin";
 
-export type SupportedMode = "all" | "eu" | "us" | "asia";
+export async function getScenariosForMode(
+  mode: SupportedMode,
+  limit = 100
+)
 
 export type StoredScenario = {
   id?: string;

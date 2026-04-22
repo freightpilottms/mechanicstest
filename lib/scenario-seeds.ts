@@ -60,6 +60,31 @@ export type FaultSeed = {
   partial_answers_bs: string[];
 };
 
+export type ScenarioSeed = {
+  brand: string;
+  vehicle: string;
+  year: number;
+  power_kw: number;
+  engine_code?: string;
+  fuel_type: VehicleSeed["fuel_type"];
+  induction: VehicleSeed["induction"];
+  timing_type: VehicleSeed["timing_type"];
+  has_start_stop: boolean;
+  has_dpf: boolean;
+  emission_standard?: string;
+  platform_type: string;
+  difficulty: Difficulty;
+  category: string;
+  root_cause_id: FaultFamily;
+  root_cause_label: string;
+  seed_symptoms: string[];
+  seed_proof_methods: string[];
+  accepted_answers_seed: string[];
+  partial_answers_seed: string[];
+  trigger_context: string;
+  context: ScenarioSeedContext;
+};
+
 export type ScenarioSeedContext = {
   locale: SupportedLocale;
   mode: SupportedMode;
@@ -1130,7 +1155,7 @@ export function getRandomScenarioSeed(options?: {
   locale?: SupportedLocale;
   mode?: SupportedMode;
   difficulty?: Difficulty;
-}) {
+}): ScenarioSeed {
   const locale = options?.locale || "bs";
   const mode = options?.mode || "all";
   const difficulty = options?.difficulty || pickOne<Difficulty>(["easy", "medium", "hard"]);
