@@ -126,19 +126,29 @@ export async function insertScenario(scenario: StoredScenario) {
   const supabase = getSupabaseAdmin();
 
   const payload = {
-    ...scenario,
-    locale: scenario.locale || scenario.language || scenario.lang || "en",
-    language: scenario.language || scenario.locale || scenario.lang || "en",
+    brand: scenario.brand,
+    platform_type: scenario.platform_type,
+    category: scenario.category,
+    root_cause_id: scenario.root_cause_id,
+    root_cause_label: scenario.root_cause_label,
+    difficulty: scenario.difficulty,
+    title: scenario.title,
+    vehicle: scenario.vehicle,
     symptoms: scenario.symptoms,
     driving: scenario.driving,
     extra: scenario.extra,
     key_details: scenario.key_details,
     questions: scenario.questions,
     hint: scenario.hint,
+    answer_main: scenario.answer_main,
+    answer_why_no_code: scenario.answer_why_no_code,
     answer_proof: scenario.answer_proof,
     accepted_answers: scenario.accepted_answers,
     partial_answers: scenario.partial_answers,
     scoring_notes: scenario.scoring_notes,
+    signature: scenario.signature,
+    locale: scenario.locale || scenario.language || "en",
+    language: scenario.language || scenario.locale || "en",
   };
 
   const { data, error } = await supabase
