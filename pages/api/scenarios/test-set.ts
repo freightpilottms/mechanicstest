@@ -1,50 +1,21 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { getScenariosForMode } from "../../../lib/scenario-storage";
+import { getScenariosForMode, type StoredScenario, type SupportedMode } from "@/lib/scenario-storage";
 
 type SupportedLocale = "en" | "bs";
-type SupportedMode = "all" | "eu" | "us" | "asia";
-type Difficulty = "easy" | "medium" | "hard";
-
-type StoredScenario = {
-  id?: string;
-  brand?: string;
-  vehicle?: string;
-  difficulty: Difficulty;
-  root_cause_id?: string;
-  times_used?: number;
-  created_at?: string;
-  locale?: string;
-  language?: string;
-  year?: number;
-  power_kw?: number;
-  [key: string]: any;
-};
 
 function getLocaleFromReq(req: NextApiRequest): SupportedLocale {
-  const raw =
-    req.method === "POST"
-      ? String(req.body?.locale || req.body?.lang || "en").toLowerCase()
-      : String(req.query.locale || req.query.lang || "en").toLowerCase();
-
+  const raw = String(req.query.locale || req.query.lang || req.body?.locale || req.body?.lang || "en").toLowerCase();
   return raw === "bs" ? "bs" : "en";
 }
 
 function getModeFromReq(req: NextApiRequest): SupportedMode {
-  const raw =
-    req.method === "POST"
-      ? String(req.body?.mode || "all").toLowerCase()
-      : String(req.query.mode || "all").toLowerCase();
-
+  const raw = String(req.query.mode || req.body?.mode || "all").toLowerCase();
   if (raw === "eu" || raw === "us" || raw === "asia") return raw;
   return "all";
 }
 
 function getCountFromReq(req: NextApiRequest): number {
-  const raw =
-    req.method === "POST"
-      ? Number(req.body?.count || 10)
-      : Number(req.query.count || 10);
-
+  const raw = Number(req.query.count || req.body?.count || 10);
   return Math.max(1, Math.min(20, Number.isFinite(raw) ? raw : 10));
 }
 
@@ -101,7 +72,7 @@ function isMechanicallyCompatible(item: StoredScenario): boolean {
   const combined = `${platform} ${vehicle}`;
 
   const looksDiesel =
-    /\b(diesel|tdi|hdi|dci|jtd|cdi|crdi|multijet|duratorq|tddi|tdci|d-4d)\b/.test(
+    /\b(diesel|tdi|hdi|dci|jtd|cdi|crdi|multijet|duratorq|tddi|tdci|d-4d|duramax|idtec|dtec)\b/.test(
       combined
     );
   const looksPetrol =
@@ -110,26 +81,33 @@ function isMechanicallyCompatible(item: StoredScenario): boolean {
     );
   const beltEngine = /\b(belt|remen)\b/.test(combined);
   const chainEngine = /\b(chain|lanac)\b/.test(combined);
+  const hasStartStop = /\b(has_start_stop:\s*yes|has_start_stop:\s*da|start[\s-]?stop)\b/.test(combined);
+  const noStartStop = /\bhas_start_stop:\s*no\b/.test(combined);
+  const hasDpf = /\b(dpf|has_dpf:\s*yes|has_dpf:\s*da)\b/.test(combined);
+  const noDpf = /\bhas_dpf:\s*no\b/.test(combined);
 
   if (beltEngine && /\b(chain|timing chain|lanac)\b/.test(text)) return false;
-  if (chainEngine && /\b(timing belt|zupcasti remen|remen razvoda|remen)\b/.test(text))
-    return false;
+  if (chainEngine && /\b(timing belt|zupcasti remen|remen razvoda|remen)\b/.test(text)) return false;
 
   if (
     looksDiesel &&
-    /\b(spark plug|ignition coil|coil pack|svjecica|svjećica|bobina|throttle body)\b/.test(
-      text
-    )
+    /\b(spark plug|ignition coil|coil pack|svjecica|svjećica|bobina|throttle body)\b/.test(text)
   ) {
     return false;
   }
 
   if (
     looksPetrol &&
-    /\b(dpf|diesel particulate|common rail|high-pressure diesel pump|injector pump|adblue|glow plug|grijac|grijač)\b/.test(
-      text
-    )
+    /\b(dpf|diesel particulate|common rail|high-pressure diesel pump|injector pump|adblue|glow plug|grijac|grijač)\b/.test(text)
   ) {
+    return false;
+  }
+
+  if (noDpf && /\b(dpf regeneration|dpf restriction|dpf clog|regeneracija dpf|zacepljen dpf|začepljen dpf)\b/.test(text)) {
+    return false;
+  }
+
+  if (!hasStartStop && noStartStop && /\bstart[\s-]?stop\b/.test(text)) {
     return false;
   }
 
@@ -188,119 +166,235 @@ function pickRandom<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
+function normalizeKey(value: unknown): string {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function vehicleKey(item: StoredScenario): string {
+  return normalizeKey(item.vehicle);
+}
+
+function rootCauseKey(item: StoredScenario): string {
+  return normalizeKey(item.root_cause_id || item.root_cause_label);
+}
+
+function categoryKey(item: StoredScenario): string {
+  return normalizeKey(item.category);
+}
+
+function platformKey(item: StoredScenario): string {
+  return normalizeKey(item.platform_type);
+}
+
+function complaintPatternKey(item: StoredScenario): string {
+  const symptoms = Array.isArray(item.symptoms) ? item.symptoms.slice(0, 2).map(normalizeKey) : [];
+  const driving = Array.isArray(item.driving) ? item.driving.slice(0, 1).map(normalizeKey) : [];
+  const extra = Array.isArray(item.extra) ? item.extra.slice(0, 1).map(normalizeKey) : [];
+  return normalizeKey([...symptoms, ...driving, ...extra].join(" "));
+}
+
+function familyKey(item: StoredScenario): string {
+  const root = rootCauseKey(item);
+  if (root) {
+    const compact = root.replace(/\s+/g, "_");
+    const parts = compact.split("_").filter(Boolean);
+    return parts.slice(0, 2).join("_");
+  }
+  return categoryKey(item) || platformKey(item);
+}
+
+function titleShapeKey(item: StoredScenario): string {
+  let title = normalizeKey(item.title);
+  title = title.replace(/\b(vw|golf|bmw|audi|mercedes|ford|toyota|honda|hyundai|chevrolet|f10|f30|w204|520d|320d|tdi|cdi|crdi|ecoboost)\b/g, "");
+  return title.replace(/\s+/g, " ").trim();
+}
+
+function usagePenalty(used: Set<string>, key: string, strong = 18, weak = 8) {
+  if (!key) return 0;
+  return used.has(key) ? strong : weak;
+}
+
+function scoreCandidate(
+  item: StoredScenario,
+  usedIds: Set<string>,
+  usedVehicles: Set<string>,
+  usedRootCauses: Set<string>,
+  usedCategories: Set<string>,
+  usedFamilies: Set<string>,
+  usedComplaintShapes: Set<string>
+) {
+  if (!item?.id || usedIds.has(String(item.id))) return Number.NEGATIVE_INFINITY;
+
+  const vKey = vehicleKey(item);
+  const rKey = rootCauseKey(item);
+  const cKey = categoryKey(item);
+  const fKey = familyKey(item);
+  const pKey = complaintPatternKey(item);
+  const tKey = titleShapeKey(item);
+
+  const timesUsed = Number(item.times_used || 0);
+  const createdBonus = createdAtMs(item) / 1e12;
+
+  let score = 100;
+  score -= timesUsed * 5;
+  score += createdBonus;
+
+  score -= usagePenalty(usedVehicles, vKey, 22, 0);
+  score -= usagePenalty(usedRootCauses, rKey, 28, 0);
+  score -= usagePenalty(usedCategories, cKey, 16, 0);
+  score -= usagePenalty(usedFamilies, fKey, 24, 0);
+  score -= usagePenalty(usedComplaintShapes, pKey || tKey, 18, 0);
+
+  if (!usedVehicles.has(vKey)) score += 7;
+  if (!usedRootCauses.has(rKey)) score += 10;
+  if (!usedFamilies.has(fKey)) score += 9;
+  if (!usedCategories.has(cKey)) score += 5;
+  if (!usedComplaintShapes.has(pKey || tKey)) score += 6;
+
+  score += Math.random() * 1.25;
+
+  return score;
+}
+
 function topScoredCandidates(
   pool: StoredScenario[],
   usedIds: Set<string>,
   usedVehicles: Set<string>,
-  usedRootCauses: Set<string>
+  usedRootCauses: Set<string>,
+  usedCategories: Set<string>,
+  usedFamilies: Set<string>,
+  usedComplaintShapes: Set<string>
 ): StoredScenario[] {
   const available = pool.filter((item) => item?.id && !usedIds.has(String(item.id)));
   if (!available.length) return [];
 
-  const scored = available.map((item) => {
-    const vehicle = String(item.vehicle || "").trim().toLowerCase();
-    const rootCause = String(item.root_cause_id || "").trim().toLowerCase();
-    const timesUsed = Number(item.times_used || 0);
+  const scored = available
+    .map((item) => ({
+      item,
+      score: scoreCandidate(
+        item,
+        usedIds,
+        usedVehicles,
+        usedRootCauses,
+        usedCategories,
+        usedFamilies,
+        usedComplaintShapes
+      ),
+    }))
+    .filter((x) => Number.isFinite(x.score))
+    .sort((a, b) => b.score - a.score);
 
-    let score = 0;
-    if (vehicle && !usedVehicles.has(vehicle)) score += 50;
-    if (rootCause && !usedRootCauses.has(rootCause)) score += 50;
-
-    // Prefer less-used scenarios, but not in a fully deterministic way.
-    score += Math.max(0, 30 - Math.min(timesUsed, 30));
-
-    // Small freshness boost, not enough to dominate everything.
-    score += Math.min(20, Math.floor(createdAtMs(item) / 86400000) % 20);
-
-    // Tiny noise so ties do not always resolve the same way.
-    score += Math.random() * 10;
-
-    return { item, score };
-  });
-
-  scored.sort((a, b) => b.score - a.score);
-  const cutoff = scored[0]?.score ?? 0;
-  const window = scored.filter((x) => x.score >= cutoff - 8).slice(0, 12);
-  return window.map((x) => x.item);
-}
-
-function pickBestCandidate(
-  pool: StoredScenario[],
-  usedIds: Set<string>,
-  usedVehicles: Set<string>,
-  usedRootCauses: Set<string>
-): StoredScenario | null {
-  const candidates = topScoredCandidates(pool, usedIds, usedVehicles, usedRootCauses);
-  if (!candidates.length) return null;
-  return pickRandom(candidates);
+  if (!scored.length) return [];
+  const topCount = Math.min(8, scored.length);
+  return scored.slice(0, topCount).map((x) => x.item);
 }
 
 function addScenario(
   selected: StoredScenario[],
-  scenario: StoredScenario | null,
+  picked: StoredScenario,
   usedIds: Set<string>,
   usedVehicles: Set<string>,
-  usedRootCauses: Set<string>
+  usedRootCauses: Set<string>,
+  usedCategories: Set<string>,
+  usedFamilies: Set<string>,
+  usedComplaintShapes: Set<string>
 ) {
-  if (!scenario?.id) return false;
+  if (!picked?.id || usedIds.has(String(picked.id))) return false;
 
-  const id = String(scenario.id);
-  if (usedIds.has(id)) return false;
-
-  selected.push(scenario);
-  usedIds.add(id);
-
-  const vehicle = String(scenario.vehicle || "").trim().toLowerCase();
-  const rootCause = String(scenario.root_cause_id || "").trim().toLowerCase();
-
-  if (vehicle) usedVehicles.add(vehicle);
-  if (rootCause) usedRootCauses.add(rootCause);
-
+  selected.push(picked);
+  usedIds.add(String(picked.id));
+  usedVehicles.add(vehicleKey(picked));
+  usedRootCauses.add(rootCauseKey(picked));
+  usedCategories.add(categoryKey(picked));
+  usedFamilies.add(familyKey(picked));
+  usedComplaintShapes.add(complaintPatternKey(picked) || titleShapeKey(picked));
   return true;
 }
 
-function buildTestSet(allScenarios: StoredScenario[], count: number): StoredScenario[] {
-  const easyPool = shuffle(allScenarios.filter((x) => x.difficulty === "easy"));
-  const mediumPool = shuffle(allScenarios.filter((x) => x.difficulty === "medium"));
-  const hardPool = shuffle(allScenarios.filter((x) => x.difficulty === "hard"));
-
-  const target = buildTargetDistribution(count);
-
+function buildTestSet(allScenarios: StoredScenario[], count: number) {
   const selected: StoredScenario[] = [];
   const usedIds = new Set<string>();
   const usedVehicles = new Set<string>();
   const usedRootCauses = new Set<string>();
+  const usedCategories = new Set<string>();
+  const usedFamilies = new Set<string>();
+  const usedComplaintShapes = new Set<string>();
 
-  for (let i = 0; i < target.easy; i += 1) {
-    const picked = pickBestCandidate(easyPool, usedIds, usedVehicles, usedRootCauses);
-    addScenario(selected, picked, usedIds, usedVehicles, usedRootCauses);
-  }
+  const distribution = buildTargetDistribution(count);
+  const byDifficulty = {
+    easy: allScenarios.filter((x) => x.difficulty === "easy"),
+    medium: allScenarios.filter((x) => x.difficulty === "medium"),
+    hard: allScenarios.filter((x) => x.difficulty === "hard"),
+  };
 
-  for (let i = 0; i < target.medium; i += 1) {
-    const picked = pickBestCandidate(mediumPool, usedIds, usedVehicles, usedRootCauses);
-    addScenario(selected, picked, usedIds, usedVehicles, usedRootCauses);
-  }
+  (["easy", "medium", "hard"] as const).forEach((difficulty) => {
+    const target = distribution[difficulty];
+    let tries = 0;
 
-  for (let i = 0; i < target.hard; i += 1) {
-    const picked = pickBestCandidate(hardPool, usedIds, usedVehicles, usedRootCauses);
-    addScenario(selected, picked, usedIds, usedVehicles, usedRootCauses);
-  }
+    while (selected.length < count && tries < target * 5) {
+      const candidates = topScoredCandidates(
+        byDifficulty[difficulty],
+        usedIds,
+        usedVehicles,
+        usedRootCauses,
+        usedCategories,
+        usedFamilies,
+        usedComplaintShapes
+      );
+      if (!candidates.length) break;
+
+      const picked = pickRandom(candidates);
+      addScenario(
+        selected,
+        picked,
+        usedIds,
+        usedVehicles,
+        usedRootCauses,
+        usedCategories,
+        usedFamilies,
+        usedComplaintShapes
+      );
+      tries += 1;
+
+      const currentDifficultyCount = selected.filter((x) => x.difficulty === difficulty).length;
+      if (currentDifficultyCount >= target) break;
+    }
+  });
 
   if (selected.length < count) {
-    const remainingPool = shuffle(
-      allScenarios.filter((item) => item?.id && !usedIds.has(String(item.id)))
-    );
+    const remainingPool = allScenarios.filter((item) => item?.id && !usedIds.has(String(item.id)));
 
     while (selected.length < count) {
-      const picked = pickBestCandidate(
+      const candidates = topScoredCandidates(
         remainingPool,
         usedIds,
         usedVehicles,
-        usedRootCauses
+        usedRootCauses,
+        usedCategories,
+        usedFamilies,
+        usedComplaintShapes
       );
+      if (!candidates.length) break;
 
-      if (!picked) break;
-      if (!addScenario(selected, picked, usedIds, usedVehicles, usedRootCauses)) break;
+      const picked = pickRandom(candidates);
+      if (
+        !addScenario(
+          selected,
+          picked,
+          usedIds,
+          usedVehicles,
+          usedRootCauses,
+          usedCategories,
+          usedFamilies,
+          usedComplaintShapes
+        )
+      ) {
+        break;
+      }
     }
   }
 
@@ -355,8 +449,7 @@ export default async function handler(
     const mode = getModeFromReq(req);
     const excludeIds = new Set(getExcludeIdsFromReq(req));
 
-    // Pull a much larger pool; limiting to 500 can hide most of the database.
-    const allScenariosRaw = await getScenariosForMode(mode, 5000);
+    const allScenariosRaw = await getScenariosForMode(mode, 5000, locale);
     const allScenarios = uniqueById(allScenariosRaw).filter(isMechanicallyCompatible);
 
     if (!allScenarios.length) {
@@ -392,11 +485,19 @@ export default async function handler(
     };
 
     const uniqueVehicles = new Set(
-      selected.map((x) => String(x.vehicle || "").trim().toLowerCase()).filter(Boolean)
+      selected.map((x) => vehicleKey(x)).filter(Boolean)
     ).size;
 
     const uniqueRootCauses = new Set(
-      selected.map((x) => String(x.root_cause_id || "").trim().toLowerCase()).filter(Boolean)
+      selected.map((x) => rootCauseKey(x)).filter(Boolean)
+    ).size;
+
+    const uniqueFamilies = new Set(
+      selected.map((x) => familyKey(x)).filter(Boolean)
+    ).size;
+
+    const uniqueCategories = new Set(
+      selected.map((x) => categoryKey(x)).filter(Boolean)
     ).size;
 
     return res.status(200).json({
@@ -408,6 +509,8 @@ export default async function handler(
         difficultyBreakdown,
         uniqueVehicles,
         uniqueRootCauses,
+        uniqueFamilies,
+        uniqueCategories,
         requestedLocale: locale,
         usedLocale,
         mode,

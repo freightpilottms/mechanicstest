@@ -42,7 +42,36 @@ function clampNumber(value: any, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
-function sanitizeResult(raw: any): EvalApiResponse {
+function normalizeMechanicText(text: string, locale: "en" | "bs") {
+  let out = String(text || "").trim().replace(/\s+/g, " ");
+  out = out.replace(/^[-–—:\s]+/, "").replace(/\s+[.]+$/, ".");
+  if (!out) return "";
+
+  if (locale === "bs") {
+    out = out
+      .replace(/\bkorisnik\b/gi, "odgovor")
+      .replace(/\bnavodi\b/gi, "spominje")
+      .replace(/\bvozilo\b/gi, "auto")
+      .replace(/\bautomobil\b/gi, "auto")
+      .replace(/\bprisutna je\b/gi, "ima")
+      .replace(/\bprisutno je\b/gi, "ima")
+      .replace(/\bne odgovara u potpunosti\b/gi, "nije baš to")
+      .replace(/\bdjelimično tačno\b/gi, "djelimično tačno")
+      .replace(/\bvrlo blizu traženom kvaru\b/gi, "vrlo blizu traženom kvaru");
+
+    if (out.length > 160) {
+      out = out.slice(0, 157).trimEnd() + "...";
+    }
+  } else {
+    if (out.length > 160) {
+      out = out.slice(0, 157).trimEnd() + "...";
+    }
+  }
+
+  return out;
+}
+
+function sanitizeResult(raw: any, locale: "en" | "bs"): EvalApiResponse {
   const diagnosisPercent = clampNumber(raw?.diagnosis_percent, 0, 100);
   const bonus = clampNumber(raw?.bonus, 0, 1);
   const score = clampNumber(raw?.score, 0, 10);
@@ -55,8 +84,8 @@ function sanitizeResult(raw: any): EvalApiResponse {
     diagnosis_percent: diagnosisPercent,
     bonus,
     verdict,
-    matched_cause: String(raw?.matched_cause || "").trim(),
-    reason_short: String(raw?.reason_short || "").trim(),
+    matched_cause: normalizeMechanicText(String(raw?.matched_cause || "").trim(), locale),
+    reason_short: normalizeMechanicText(String(raw?.reason_short || "").trim(), locale),
   };
 }
 
@@ -94,7 +123,7 @@ function inferLocale(question: ScenarioQuestion, userAnswer: string): "en" | "bs
     "gubitak",
     "zagrij",
     "curenje",
-    "djelomično",
+    "djelimično",
     "začepljen",
   ];
 
@@ -178,7 +207,19 @@ OUTPUT LANGUAGE:
 - You must write matched_cause and reason_short in ${isBs ? "Bosnian" : "English"} only.
 - Do not mix languages.
 - Keep reason_short short, natural, and workshop-style.
-- If locale is Bosnian, use natural mechanic-style Bosnian wording, not literal translation.
+- If locale is Bosnian, write like a real mechanic from Bosnia/Croatia/Serbia region would speak in a workshop.
+- DO NOT sound translated.
+- DO NOT use stiff book language.
+- DO NOT use robotic phrases like:
+  - "korisnik navodi"
+  - "vozilo pokazuje nepravilnosti"
+  - "odgovor ukazuje na potencijalni problem"
+- Prefer natural mechanic phrasing like:
+  - "Blizu si, ali preširoko."
+  - "Dobar pravac, ali nisi pogodio tačan kvar."
+  - "To je to, pogodio si glavni uzrok."
+  - "Previše široko, fali tačan dio."
+  - "Nije baš to, ali si blizu sistema."
 
 IMPORTANT GOAL:
 This app is about DIAGNOSIS SKILL, not elegant writing.
@@ -245,6 +286,27 @@ You are NOT grading whether the user fully answered:
 
 You are grading mainly the DIAGNOSIS QUALITY.
 The other two parts only affect BONUS.
+
+STYLE RULES FOR matched_cause:
+- Keep it short and direct.
+- Example Bosnian:
+  - "Labavo crijevo intercoolera"
+  - "Senzor radilice kad se ugrije"
+  - "Vakum crijevo pušta"
+- Example English:
+  - "Loose intercooler hose"
+  - "Crank sensor failing when hot"
+  - "Vacuum leak on boost control"
+
+STYLE RULES FOR reason_short:
+- One short sentence or two very short sentences.
+- Natural mechanic tone.
+- No academic explanation.
+- Bosnian examples:
+  - "Dobar pravac, pogodio si glavni kvar."
+  - "Blizu si, ali nisi suzio na tačan dio."
+  - "Preširoko. Sistem jeste taj, ali kvar nije precizan."
+  - "Nije to, simptomi više vuku na drugi uzrok."
 
 You must return ONLY valid JSON with this exact shape:
 {
@@ -313,6 +375,7 @@ Before returning JSON, think like an experienced mechanic instructor:
 - Did the user provide proof/testing logic that deserves bonus?
 - Did the user use a natural synonym for the same fault?
 - Is the output language correct?
+- Does Bosnian sound native and workshop-natural?
 
 Return JSON only.
 `;
@@ -359,7 +422,7 @@ export default async function handler(
       throw new Error(`AI returned non-JSON evaluation: ${text}`);
     }
 
-    const result = sanitizeResult(parsed);
+    const result = sanitizeResult(parsed, locale);
 
     return res.status(200).json({
       ok: true,

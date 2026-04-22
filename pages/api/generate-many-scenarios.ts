@@ -4,8 +4,9 @@ import { getOpenAI } from "../../lib/openai";
 import {
   insertScenario,
   findScenarioBySignature,
+  findScenarioByFingerprint,
 } from "../../lib/scenario-storage";
-import { makeScenarioSignature } from "../../lib/scenario-signature";
+import { makeScenarioSignature, buildScenarioFingerprint } from "../../lib/scenario-signature";
 import {
   getRandomScenarioSeed,
   type ScenarioSeed,
@@ -636,6 +637,35 @@ export default async function handler(
             vehicle: parsed.vehicle,
             root_cause_id: parsed.root_cause_id,
             title: parsed.title,
+          });
+          continue;
+        }
+
+        const fingerprint = buildScenarioFingerprint({
+          locale,
+          brand: parsed.brand,
+          vehicle: parsed.vehicle,
+          rootCauseId: parsed.root_cause_id,
+          symptoms: parsed.symptoms,
+          questions: parsed.questions,
+          answerMain: parsed.answer_main,
+        });
+
+        const nearby = await findScenarioByFingerprint(parsed.root_cause_id, locale);
+        const duplicateLike = nearby.find((row: any) => {
+          const hay = JSON.stringify([row?.vehicle, row?.title]).toLowerCase();
+          const parts = fingerprint.toLowerCase().split("::").slice(-3).filter(Boolean);
+          return parts.length >= 2 && parts.every((p) => p && hay.includes(p.slice(0, Math.min(p.length, 18))));
+        });
+
+        if (duplicateLike) {
+          existing.push({
+            signature,
+            fingerprint,
+            vehicle: parsed.vehicle,
+            root_cause_id: parsed.root_cause_id,
+            title: parsed.title,
+            reason: "too similar to existing scenario",
           });
           continue;
         }

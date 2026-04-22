@@ -180,6 +180,30 @@ export async function findScenarioBySignature(signature: string) {
   return data;
 }
 
+
+export async function findScenarioByFingerprint(rootCauseId: string, locale?: string) {
+  const supabase = getSupabaseAdmin();
+
+  let query = supabase
+    .from("scenarios")
+    .select("id, root_cause_id, locale, vehicle, title, created_at")
+    .eq("root_cause_id", rootCauseId)
+    .order("created_at", { ascending: false })
+    .limit(25);
+
+  if (locale) {
+    query = query.eq("locale", locale);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data || [];
+}
+
 export async function getScenarioById(id: string) {
   const supabase = getSupabaseAdmin();
 
