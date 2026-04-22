@@ -31,6 +31,7 @@ export type StoredScenario = {
   partial_answers: string[];
   scoring_notes: Record<string, any>;
   signature: string;
+  fingerprint?: string;
 
   year?: number;
   power_kw?: number;
@@ -147,6 +148,7 @@ export async function insertScenario(scenario: StoredScenario) {
     partial_answers: scenario.partial_answers,
     scoring_notes: scenario.scoring_notes,
     signature: scenario.signature,
+    fingerprint: scenario.fingerprint,
     locale: scenario.locale || scenario.language || scenario.lang || "en",
     language: scenario.language || scenario.locale || scenario.lang || "en",
   };
@@ -171,6 +173,22 @@ export async function findScenarioBySignature(signature: string) {
     .from("scenarios")
     .select("id, signature")
     .eq("signature", signature)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data;
+}
+
+export async function findScenarioByFingerprint(fingerprint: string) {
+  const supabase = getSupabaseAdmin();
+
+  const { data, error } = await supabase
+    .from("scenarios")
+    .select("id, signature, fingerprint")
+    .eq("fingerprint", fingerprint)
     .maybeSingle();
 
   if (error) {
@@ -212,21 +230,7 @@ export async function getLatestScenario() {
 
   return data;
 }
-export async function findScenarioByFingerprint(fingerprint: string) {
-  const supabase = getSupabaseAdmin();
 
-  const { data, error } = await supabase
-    .from("scenarios")
-    .select("id, signature, fingerprint")
-    .eq("fingerprint", fingerprint)
-    .maybeSingle();
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return data;
-}
 export async function getScenariosForMode(
   mode: SupportedMode = "all",
   limit = 100,
