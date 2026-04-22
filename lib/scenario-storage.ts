@@ -1,11 +1,14 @@
 import { getSupabaseAdmin } from "./supabase-admin";
 
+export type SupportedMode = "all" | "eu" | "us" | "asia";
+
 export type StoredScenario = {
   id?: string;
   created_at?: string;
   times_used?: number;
   locale?: string;
   language?: string;
+  lang?: string;
 
   brand: string;
   platform_type: string;
@@ -28,28 +31,119 @@ export type StoredScenario = {
   partial_answers: string[];
   scoring_notes: Record<string, any>;
   signature: string;
+
+  year?: number;
+  power_kw?: number;
+  engine_code?: string;
+  fuel_type?: string;
+  induction?: string;
+  timing_type?: string;
+  has_start_stop?: boolean;
+  has_dpf?: boolean;
+  emission_standard?: string;
 };
+
+function normalizeText(value: unknown) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function matchesMode(item: StoredScenario, mode: SupportedMode) {
+  if (mode === "all") return true;
+
+  const brand = normalizeText(item.brand);
+  const vehicle = normalizeText(item.vehicle);
+  const platform = normalizeText(item.platform_type);
+  const text = `${brand} ${vehicle} ${platform}`;
+
+  const euBrands = [
+    "audi",
+    "bmw",
+    "mercedes",
+    "mercedes-benz",
+    "vw",
+    "volkswagen",
+    "skoda",
+    "seat",
+    "opel",
+    "peugeot",
+    "renault",
+    "citroen",
+    "citroën",
+    "fiat",
+    "alfa romeo",
+    "volvo",
+    "saab",
+    "land rover",
+    "mini",
+    "jaguar",
+    "porsche",
+  ];
+
+  const usBrands = [
+    "ford",
+    "chevrolet",
+    "chevy",
+    "gmc",
+    "dodge",
+    "jeep",
+    "cadillac",
+    "chrysler",
+    "lincoln",
+    "buick",
+    "ram",
+    "pontiac",
+    "saturn",
+  ];
+
+  const asiaBrands = [
+    "toyota",
+    "lexus",
+    "honda",
+    "acura",
+    "nissan",
+    "infiniti",
+    "mazda",
+    "mitsubishi",
+    "subaru",
+    "suzuki",
+    "hyundai",
+    "kia",
+    "daewoo",
+    "isuzu",
+  ];
+
+  if (mode === "eu") return euBrands.some((x) => text.includes(x));
+  if (mode === "us") return usBrands.some((x) => text.includes(x));
+  if (mode === "asia") return asiaBrands.some((x) => text.includes(x));
+
+  return true;
+}
 
 export async function insertScenario(scenario: StoredScenario) {
   const supabase = getSupabaseAdmin();
 
+  const payload = {
+    ...scenario,
+    locale: scenario.locale || scenario.language || scenario.lang || "en",
+    language: scenario.language || scenario.locale || scenario.lang || "en",
+    symptoms: scenario.symptoms,
+    driving: scenario.driving,
+    extra: scenario.extra,
+    key_details: scenario.key_details,
+    questions: scenario.questions,
+    hint: scenario.hint,
+    answer_proof: scenario.answer_proof,
+    accepted_answers: scenario.accepted_answers,
+    partial_answers: scenario.partial_answers,
+    scoring_notes: scenario.scoring_notes,
+  };
+
   const { data, error } = await supabase
     .from("scenarios")
-    .insert({
-      ...scenario,
-      locale: scenario.locale || scenario.language || "en",
-      language: scenario.language || scenario.locale || "en",
-      symptoms: scenario.symptoms,
-      driving: scenario.driving,
-      extra: scenario.extra,
-      key_details: scenario.key_details,
-      questions: scenario.questions,
-      hint: scenario.hint,
-      answer_proof: scenario.answer_proof,
-      accepted_answers: scenario.accepted_answers,
-      partial_answers: scenario.partial_answers,
-      scoring_notes: scenario.scoring_notes,
-    })
+    .insert(payload)
     .select("id")
     .single();
 
@@ -110,7 +204,7 @@ export async function getLatestScenario() {
 }
 
 export async function getScenariosForMode(
-  mode: "all" = "all",
+  mode: SupportedMode = "all",
   limit = 10,
   locale?: string
 ) {
@@ -133,7 +227,8 @@ export async function getScenariosForMode(
     throw new Error(error.message);
   }
 
-  return data ?? [];
+  const rows = (data ?? []) as StoredScenario[];
+  return rows.filter((item) => matchesMode(item, mode));
 }
 
 export async function incrementScenarioTimesUsed(id: string) {
