@@ -314,10 +314,14 @@ YOU MUST USE THESE FIXED INPUTS:
 ${vehicleMetaBlock}
 
 SCENARIO CONTEXT (MUST BE USED):
-- Temperature condition: ${seed.context.temperature}
-- Load condition: ${seed.context.load}
-- Behavior pattern: ${seed.context.behavior}
-- Failure timeline: ${seed.context.timeline}
+- Trigger: ${seed.context.trigger}
+- Trigger family: ${seed.context.trigger_family}
+- Vehicle mode: ${seed.context.mode}
+- Fault family label: ${
+  locale === "bs"
+    ? seed.context.faultSeed.family_label_bs
+    : seed.context.faultSeed.family_label_en
+}
 
 STRICT RULES:
 - Only automotive diagnostics
