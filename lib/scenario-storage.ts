@@ -149,6 +149,15 @@ export async function insertScenario(scenario: StoredScenario) {
     signature: scenario.signature,
     locale: scenario.locale || scenario.language || "en",
     language: scenario.language || scenario.locale || "en",
+    year: scenario.year ?? null,
+    power_kw: scenario.power_kw ?? null,
+    engine_code: scenario.engine_code ?? null,
+    fuel_type: scenario.fuel_type ?? null,
+    induction: scenario.induction ?? null,
+    timing_type: scenario.timing_type ?? null,
+    has_start_stop: scenario.has_start_stop ?? null,
+    has_dpf: scenario.has_dpf ?? null,
+    emission_standard: scenario.emission_standard ?? null,
   };
 
   const { data, error } = await supabase

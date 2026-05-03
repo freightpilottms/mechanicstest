@@ -11,6 +11,15 @@ type ScenarioQuestion = {
   difficulty: "easy" | "medium" | "hard";
   title: string;
   vehicle: string;
+  year?: number;
+  power_kw?: number;
+  engine_code?: string;
+  fuel_type?: string;
+  induction?: string;
+  timing_type?: string;
+  has_start_stop?: boolean;
+  has_dpf?: boolean;
+  emission_standard?: string;
   symptoms: string[];
   driving: string[];
   extra: string[];
@@ -106,6 +115,13 @@ function inferLocale(question: ScenarioQuestion, userAnswer: string): "en" | "bs
   return score >= 2 ? "bs" : "en";
 }
 
+function localeFromBody(raw: unknown): "en" | "bs" | null {
+  const value = String(raw || "").toLowerCase();
+  if (value === "bs") return "bs";
+  if (value === "en") return "en";
+  return null;
+}
+
 function getDifficultyAdjustmentGuide(
   difficulty: "easy" | "medium" | "hard",
   locale: "en" | "bs"
@@ -179,6 +195,8 @@ OUTPUT LANGUAGE:
 - Do not mix languages.
 - Keep reason_short short, natural, and workshop-style.
 - If locale is Bosnian, use natural mechanic-style Bosnian wording, not literal translation.
+- For Bosnian, accept common shop slang and regional wording: majstor, ler, vergla, cuka, ne vuče, trokira, preskače, luft, seleni, kugla, kinetika, homokinetički, lager/ležaj, anlaser, dizna, bobina, grijač, masa, usis, auspuh, štopa, čeljust/kliješta.
+- For Bosnian, do not punish missing diacritics, Serbian/Croatian variants, or mixed shorthand if the diagnosis meaning is clear.
 
 IMPORTANT GOAL:
 This app is about DIAGNOSIS SKILL, not elegant writing.
@@ -221,6 +239,7 @@ BONUS:
 HOW TO INTERPRET ANSWERS:
 - If the user says the same fault in different wording, it can still be 9 or 10.
 - If the user names the exact bad component but not the exact failure mode, that can still be strong.
+- If the user answers like a real mechanic with a short phrase, grade the intended diagnosis, not grammar.
 - If the user gives multiple possible causes, judge generously ONLY if one of the main causes is clearly the correct one and the rest do not destroy the answer.
 - If the user shotgun-lists many random causes, reduce score.
 - If the user only gives a broad area like "fuel issue", "sensor issue", "boost leak area", "EGR problem", score it as partial/weak unless it clearly matches the real root cause closely.
@@ -273,6 +292,14 @@ HOW TO MAP VERDICT:
 SCENARIO:
 ${JSON.stringify({
   vehicle: question.vehicle,
+  year: question.year,
+  power_kw: question.power_kw,
+  engine_code: question.engine_code,
+  fuel_type: question.fuel_type,
+  induction: question.induction,
+  timing_type: question.timing_type,
+  has_dpf: question.has_dpf,
+  emission_standard: question.emission_standard,
   title: question.title,
   category: question.category,
   difficulty: question.difficulty,
@@ -337,7 +364,7 @@ export default async function handler(
       return res.status(400).json({ ok: false, error: "Missing userAnswer" });
     }
 
-    const locale = inferLocale(question as ScenarioQuestion, userAnswer);
+    const locale = localeFromBody(req.body?.locale || req.body?.lang) || inferLocale(question as ScenarioQuestion, userAnswer);
 
     const openai = getOpenAI();
     const model = process.env.OPENAI_SCORING_MODEL || "gpt-5-mini";

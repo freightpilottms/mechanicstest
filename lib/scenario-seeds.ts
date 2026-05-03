@@ -12,6 +12,13 @@ type VehicleTechMeta = {
   engine_code?: string;
 };
 
+type ScenarioContext = {
+  temperature: string;
+  load: string;
+  behavior: string;
+  timeline: string;
+};
+
 export type ScenarioSeed = {
   brand: string;
   vehicle: string;
@@ -29,78 +36,273 @@ export type ScenarioSeed = {
   has_dpf?: boolean;
   emission_standard?: string;
   engine_code?: string;
-  context: {
-    temperature: string;
-    load: string;
-    behavior: string;
-    timeline: string;
-  };
+  context: ScenarioContext;
 };
 
-const TEMPERATURE_CONDITIONS = [
-  "cold start",
-  "fully warmed engine",
-  "after a long drive",
-  "in low ambient temperature",
-  "in high ambient temperature",
-  "after overnight parking",
-  "after a short stop with warm engine",
-  "during repeated short trips",
-];
-
-const LOAD_CONDITIONS = [
-  "at idle",
-  "under light acceleration",
-  "under medium load",
-  "under heavy load",
-  "while driving uphill",
-  "during stop-and-go driving",
-  "during steady highway cruising",
-  "during overtaking",
-  "while decelerating",
-  "while coasting",
-  "while cornering under light throttle",
-  "while braking",
-];
-
-const BEHAVIOR_PATTERNS = [
-  "constant issue",
-  "intermittent issue",
-  "appears randomly",
-  "only happens after some time",
-  "only happens after the engine warms up",
-  "only appears under load",
-  "only appears at low speed",
-  "only appears at higher speed",
-  "gets worse in turns",
-  "gets worse when steering is fully turned",
-  "gets worse after repeated stops",
-];
-
-const FAILURE_TIMELINES = [
-  "started suddenly",
-  "started after recent repair",
-  "started after refueling",
-  "gradually became worse",
-  "appeared after several days of normal driving",
-  "started after hitting a pothole",
-  "started after longer highway driving",
-  "started after coolant loss was noticed",
-  "started after battery was weak for several days",
-  "became more noticeable over the last few weeks",
-];
+const CONTEXT_BANKS: Record<string, ScenarioContext[]> = {
+  wheel_bearing: [
+    {
+      temperature: "after a normal drive with the suspension at operating temperature",
+      load: "between 50 and 100 km/h on a steady road",
+      behavior: "humming rises with road speed and changes when the car is lightly steered left or right",
+      timeline: "became more noticeable over the last few weeks",
+    },
+    {
+      temperature: "regardless of engine temperature",
+      load: "during steady cruising and light lane changes",
+      behavior: "noise follows wheel speed, not engine rpm",
+      timeline: "started after a pothole hit and slowly got louder",
+    },
+  ],
+  cv_joint: [
+    {
+      temperature: "regardless of engine temperature",
+      load: "while turning with light throttle in a parking lot",
+      behavior: "clicking is strongest with the steering close to full lock",
+      timeline: "started after the outer boot had been torn and grease was found around the wheel",
+    },
+    {
+      temperature: "after a short city drive",
+      load: "when pulling away while the steering is turned",
+      behavior: "clicking disappears when driving straight",
+      timeline: "gradually became worse over several days of tight turns",
+    },
+  ],
+  suspension_bushing: [
+    {
+      temperature: "regardless of engine temperature",
+      load: "over small bumps, speed bumps and uneven city roads",
+      behavior: "knock is felt through the floor and sometimes through the steering wheel",
+      timeline: "started after hitting a pothole",
+    },
+    {
+      temperature: "regardless of engine temperature",
+      load: "during low-speed braking and pulling away",
+      behavior: "there is a dull knock and a slight shift in the front end",
+      timeline: "became more noticeable over the last few weeks",
+    },
+  ],
+  brake_drag: [
+    {
+      temperature: "after repeated stop-and-go driving",
+      load: "after braking several times in city traffic",
+      behavior: "one wheel becomes hotter and the car feels held back",
+      timeline: "started gradually after pads and discs had some mileage on them",
+    },
+    {
+      temperature: "after a short city drive",
+      load: "while coasting after braking",
+      behavior: "car pulls slightly and a hot brake smell appears near one wheel",
+      timeline: "appeared after the car sat for several days in wet weather",
+    },
+  ],
+  mounts: [
+    {
+      temperature: "fully warmed engine",
+      load: "when selecting drive or reverse and when taking off",
+      behavior: "vibration is strongest at idle under drivetrain load and eases off while cruising",
+      timeline: "gradually became worse over the last few weeks",
+    },
+    {
+      temperature: "cold start and warm idle",
+      load: "at idle with the brake held and a gear selected",
+      behavior: "body shake is stronger than engine noise and changes when the drivetrain is loaded",
+      timeline: "started after a period of rough roads and high mileage",
+    },
+  ],
+  cooling: [
+    {
+      temperature: "fully warmed engine",
+      load: "under medium load and uphill driving",
+      behavior: "temperature or coolant pressure changes with load, not with wheel speed",
+      timeline: "started after coolant loss was noticed",
+    },
+    {
+      temperature: "after a long drive",
+      load: "after acceleration followed by idle",
+      behavior: "coolant level or pressure symptoms return after the system is bled",
+      timeline: "became more noticeable over several heat cycles",
+    },
+  ],
+  dpf_egr_exhaust: [
+    {
+      temperature: "fully warmed engine",
+      load: "under medium to heavy acceleration",
+      behavior: "loss of pull appears under load while idle remains mostly clean",
+      timeline: "became worse after weeks of short city trips",
+    },
+    {
+      temperature: "during repeated short trips",
+      load: "while driving uphill or overtaking",
+      behavior: "car feels choked but may not set a clear hard fault",
+      timeline: "gradually became worse as regenerations were interrupted",
+    },
+  ],
+  boost_intake: [
+    {
+      temperature: "fully warmed engine",
+      load: "under boost during overtaking or uphill driving",
+      behavior: "power drops when boost is requested and may return when throttle is eased",
+      timeline: "started after a hard pull on the highway",
+    },
+    {
+      temperature: "after a normal drive",
+      load: "under medium to heavy acceleration",
+      behavior: "hissing or weak pull appears only when the turbo is asked to work",
+      timeline: "became more noticeable after several days of normal driving",
+    },
+  ],
+  fuel_pressure: [
+    {
+      temperature: "warm restart after a short stop",
+      load: "during cranking and the first seconds after start",
+      behavior: "engine cranks normally but rail pressure or fuel supply does not build as expected",
+      timeline: "started intermittently and became more frequent",
+    },
+    {
+      temperature: "fully warmed engine",
+      load: "under medium acceleration",
+      behavior: "hesitation follows fuel demand rather than road speed or steering angle",
+      timeline: "gradually became worse over several days",
+    },
+  ],
+  sensors_sync: [
+    {
+      temperature: "hot engine after a short stop",
+      load: "during restart or low-speed driving",
+      behavior: "fault appears intermittently and may disappear after cooling down",
+      timeline: "started suddenly and then repeated when the engine was warm",
+    },
+    {
+      temperature: "fully warmed engine",
+      load: "during idle and low-speed maneuvering",
+      behavior: "engine cuts or hesitates without a consistent mechanical noise",
+      timeline: "appeared after several days of otherwise normal driving",
+    },
+  ],
+  charging_starting: [
+    {
+      temperature: "after overnight parking",
+      load: "during the first start attempt",
+      behavior: "starter, battery or charging symptom is present before the car is driven",
+      timeline: "started after the battery had been weak for several days",
+    },
+    {
+      temperature: "after a normal city drive",
+      load: "with lights, blower and rear defroster switched on",
+      behavior: "electrical warning or slow cranking follows electrical load, not engine load",
+      timeline: "became more noticeable over the last week",
+    },
+  ],
+  oil_internal: [
+    {
+      temperature: "fully warmed engine",
+      load: "during normal mixed driving",
+      behavior: "oil level drops over mileage without an obvious outside leak",
+      timeline: "became more obvious between oil services",
+    },
+    {
+      temperature: "after a longer drive",
+      load: "after deceleration followed by acceleration",
+      behavior: "oil use is the complaint, while power and idle may still feel normal",
+      timeline: "gradually became worse over several thousand kilometers",
+    },
+  ],
+  generic: [
+    {
+      temperature: "fully warmed engine",
+      load: "under the same condition the customer can repeat reliably",
+      behavior: "symptom follows the affected system and does not contradict the fault type",
+      timeline: "became more noticeable over the last few weeks",
+    },
+  ],
+};
 
 function pickOne<T>(items: T[]): T {
   return items[Math.floor(Math.random() * items.length)];
 }
 
-function buildContext() {
-  return {
-    temperature: pickOne(TEMPERATURE_CONDITIONS),
-    load: pickOne(LOAD_CONDITIONS),
-    behavior: pickOne(BEHAVIOR_PATTERNS),
-    timeline: pickOne(FAILURE_TIMELINES),
-  };
+function contextGroupFor(template: RootCauseTemplate): keyof typeof CONTEXT_BANKS {
+  const rootCause = template.root_cause_id.toLowerCase();
+  const category = template.category.toLowerCase();
+
+  if (rootCause.includes("wheel_bearing") || category.includes("wheel bearing")) {
+    return "wheel_bearing";
+  }
+  if (rootCause.includes("cv_joint") || rootCause.includes("homokinet")) {
+    return "cv_joint";
+  }
+  if (
+    rootCause.includes("stabilizer") ||
+    rootCause.includes("bushing") ||
+    rootCause.includes("control_arm") ||
+    category.includes("suspension")
+  ) {
+    return "suspension_bushing";
+  }
+  if (rootCause.includes("caliper") || category.includes("brakes")) {
+    return "brake_drag";
+  }
+  if (rootCause.includes("mount") || category.includes("mounts")) {
+    return "mounts";
+  }
+  if (
+    rootCause.includes("head_gasket") ||
+    rootCause.includes("thermostat") ||
+    rootCause.includes("water_pump") ||
+    category.includes("cooling")
+  ) {
+    return "cooling";
+  }
+  if (
+    rootCause.includes("dpf") ||
+    rootCause.includes("egr") ||
+    category.includes("exhaust")
+  ) {
+    return "dpf_egr_exhaust";
+  }
+  if (
+    rootCause.includes("boost") ||
+    rootCause.includes("intercooler") ||
+    rootCause.includes("vacuum") ||
+    category.includes("intake")
+  ) {
+    return "boost_intake";
+  }
+  if (
+    rootCause.includes("fuel") ||
+    rootCause.includes("injector") ||
+    rootCause.includes("leakoff") ||
+    category.includes("fuel")
+  ) {
+    return "fuel_pressure";
+  }
+  if (
+    rootCause.includes("sensor") ||
+    rootCause.includes("crankshaft") ||
+    rootCause.includes("camshaft") ||
+    category.includes("sensors")
+  ) {
+    return "sensors_sync";
+  }
+  if (
+    rootCause.includes("starter") ||
+    rootCause.includes("alternator") ||
+    rootCause.includes("ground") ||
+    category.includes("electrical")
+  ) {
+    return "charging_starting";
+  }
+  if (rootCause.includes("rings") || rootCause.includes("karike") || category.includes("internal engine")) {
+    return "oil_internal";
+  }
+
+  return "generic";
+}
+
+function buildContext(template: RootCauseTemplate) {
+  const group = contextGroupFor(template);
+  return pickOne(CONTEXT_BANKS[group]);
 }
 
 type RootCauseTemplate = {
@@ -471,6 +673,51 @@ const ROOT_CAUSE_POOL: RootCauseTemplate[] = [
     root_cause_label: "Vanjski kinetički zglob proizvodi kliktanje pri motanju",
     difficulty: "easy",
   },
+  {
+    brand: "Ford",
+    vehicle: "Ford F-150 3.5 EcoBoost",
+    platform_type: "modern_petrol_turbo_direct_chain",
+    category: "Air flow / Turbo / Intake",
+    root_cause_id: "intercooler_hose_split_under_boost",
+    root_cause_label: "Crijevo interkulera puca pod boostom",
+    difficulty: "medium",
+  },
+  {
+    brand: "Chevrolet",
+    vehicle: "Chevrolet Cruze 1.4 Turbo",
+    platform_type: "modern_petrol_turbo_direct_chain",
+    category: "Cooling",
+    root_cause_id: "thermostat_housing_internal_fault",
+    root_cause_label: "Kućište termostata ima unutrašnji kvar",
+    difficulty: "medium",
+  },
+  {
+    brand: "Dodge",
+    vehicle: "Dodge Journey 3.6 V6",
+    platform_type: "modern_petrol_port_injection_chain",
+    category: "Drivetrain / Chassis",
+    root_cause_id: "front_wheel_bearing_humming",
+    root_cause_label: "Ležaj prednjeg točka proizvodi hučanje",
+    difficulty: "easy",
+  },
+  {
+    brand: "Jeep",
+    vehicle: "Jeep Grand Cherokee 3.0 CRD",
+    platform_type: "modern_diesel_v6_cr_turbo_dpf_chain",
+    category: "Fuel / Injection",
+    root_cause_id: "injector_leakoff_excessive",
+    root_cause_label: "Prevelik leak-off na jednoj dizni",
+    difficulty: "medium",
+  },
+  {
+    brand: "Chevrolet",
+    vehicle: "Chevrolet Silverado 5.3 V8",
+    platform_type: "modern_petrol_port_injection_chain",
+    category: "Mounts / Vibration",
+    root_cause_id: "engine_mount_collapsed",
+    root_cause_label: "Nosač motora oslabljen / sjeo",
+    difficulty: "medium",
+  },
 
   // Peugeot / Citroen
   {
@@ -524,7 +771,7 @@ const ROOT_CAUSE_POOL: RootCauseTemplate[] = [
   },
   {
     brand: "Toyota",
-    vehicle: "Toyota Corolla 1.6 бензин",
+    vehicle: "Toyota Corolla 1.6 benzin",
     platform_type: "modern_petrol_port_injection_chain",
     category: "Drivetrain / Chassis",
     root_cause_id: "front_wheel_bearing_humming",
@@ -618,6 +865,11 @@ const VEHICLE_TECH_SPECS: Record<string, VehicleTechMeta> = {
   "Ford Mondeo 2.0 TDCi": { year: 2011, power_kw: 103, has_start_stop: false, emission_standard: "Euro 5" },
   "Ford Focus 1.6 TDCi": { year: 2010, power_kw: 80, has_start_stop: false, emission_standard: "Euro 4/5" },
   "Ford Focus 1.8 TDCi": { year: 2008, power_kw: 85, has_start_stop: false, emission_standard: "Euro 4" },
+  "Ford F-150 3.5 EcoBoost": { year: 2015, power_kw: 272, has_start_stop: false, emission_standard: "US Tier 2 Bin 5", engine_code: "EcoBoost 3.5" },
+  "Chevrolet Cruze 1.4 Turbo": { year: 2014, power_kw: 103, has_start_stop: false, emission_standard: "US Tier 2 Bin 5" },
+  "Dodge Journey 3.6 V6": { year: 2013, power_kw: 209, has_start_stop: false, emission_standard: "US Tier 2 Bin 5" },
+  "Jeep Grand Cherokee 3.0 CRD": { year: 2014, power_kw: 177, has_start_stop: false, emission_standard: "Euro 5 / US diesel", engine_code: "EXF" },
+  "Chevrolet Silverado 5.3 V8": { year: 2015, power_kw: 265, has_start_stop: false, emission_standard: "US Tier 2 Bin 5" },
 
   "Peugeot 308 1.6 HDi": { year: 2011, power_kw: 82, has_start_stop: false, emission_standard: "Euro 5" },
   "Citroen C5 2.0 HDi": { year: 2011, power_kw: 103, has_start_stop: false, emission_standard: "Euro 5" },
@@ -626,7 +878,7 @@ const VEHICLE_TECH_SPECS: Record<string, VehicleTechMeta> = {
   "Renault Laguna 2.0 dCi": { year: 2010, power_kw: 110, has_start_stop: false, emission_standard: "Euro 4/5" },
 
   "Toyota Avensis 2.0 D-4D": { year: 2010, power_kw: 93, has_start_stop: false, emission_standard: "Euro 4/5" },
-  "Toyota Corolla 1.6 бензин": { year: 2008, power_kw: 97, has_start_stop: false, emission_standard: "Euro 4" },
+  "Toyota Corolla 1.6 benzin": { year: 2008, power_kw: 97, has_start_stop: false, emission_standard: "Euro 4" },
 
   "Honda Civic 2.2 i-CTDi": { year: 2008, power_kw: 103, has_start_stop: false, has_dpf: false, emission_standard: "Euro 4" },
   "Honda Accord 2.0 benzin": { year: 2008, power_kw: 114, has_start_stop: false, emission_standard: "Euro 4" },
@@ -685,7 +937,7 @@ export function getRandomScenarioSeed(): ScenarioSeed {
 
   return {
     ...base,
-    context: buildContext(),
+    context: buildContext(base),
   };
 }
 

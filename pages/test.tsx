@@ -2,6 +2,7 @@ import { useRouter } from "next/router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DIFFICULTY_LABELS, TIME_LIMITS, type Difficulty } from "@/lib/mock-questions";
 import { useLocale } from "@/lib/locale-context";
+import { getMessages } from "@/lib/i18n";
 import {
   buildTestSessionId,
   clearActiveTestSession,
@@ -28,6 +29,8 @@ type EvaluatedResult = {
   verdict: "correct" | "very_close" | "partial" | "weak" | "wrong";
   matchedCause: string;
 };
+
+type Messages = ReturnType<typeof getMessages>;
 
 function formatTime(totalSeconds: number) {
   const minutes = Math.floor(totalSeconds / 60);
@@ -91,18 +94,18 @@ function PreviewCard({
   );
 }
 
-function getRank(score: number) {
+function getRank(score: number, isBs: boolean) {
+  if (isBs) {
+    if (score >= 9) return "Majstor dijagnostike";
+    if (score >= 7) return "Dobar majstor";
+    if (score >= 5) return "Uhodan";
+    return "Šegrt";
+  }
+
   if (score >= 9) return "Master Tech";
   if (score >= 7) return "Advanced";
   if (score >= 5) return "Intermediate";
   return "Beginner";
-}
-
-function getRankBs(score: number) {
-  if (score >= 9) return "Master mehaničar";
-  if (score >= 7) return "Napredni mehaničar";
-  if (score >= 5) return "Srednji mehaničar";
-  return "Početnik";
 }
 
 function difficultyBadgeClasses(difficulty: Difficulty) {
@@ -115,15 +118,13 @@ function getDifficultyText(difficulty: Difficulty, isBs: boolean) {
   return DIFFICULTY_LABELS[difficulty][isBs ? "bs" : "en"];
 }
 
-function buildLocalFallbackEvaluation(answer: string, isBs: boolean): EvaluatedResult {
+function buildLocalFallbackEvaluation(answer: string, isBs: boolean, t: Messages): EvaluatedResult {
   const score = answer.trim() ? 4 : 0;
 
   return {
     score,
-    rank: isBs ? getRankBs(score) : getRank(score),
-    feedback: isBs
-      ? "Privremena ocjena jer AI evaluator nije vratio rezultat."
-      : "Temporary score because AI evaluator did not return a result.",
+    rank: getRank(score, isBs),
+    feedback: t.temporaryScore,
     diagnosisPercent: score > 0 ? 50 : 0,
     bonus: 0,
     verdict: score > 0 ? "partial" : "wrong",
@@ -136,11 +137,11 @@ function getRemainingSeconds(deadlineAt: number, fallbackTimeLeft: number) {
   return Math.max(0, Math.ceil((deadlineAt - Date.now()) / 1000));
 }
 
-function modeLabel(mode: string, isBs: boolean) {
-  if (mode === "eu") return isBs ? "Evropska vozila" : "European Cars";
-  if (mode === "us") return isBs ? "Američka vozila" : "US Cars";
-  if (mode === "asia") return isBs ? "Azijska vozila" : "Asia Cars";
-  return isBs ? "Dijagnostika svih vozila" : "All Cars Diagnosis";
+function modeLabel(mode: string, t: Messages) {
+  if (mode === "eu") return t.modeEuropean;
+  if (mode === "us") return t.modeUs;
+  if (mode === "asia") return t.modeAsia;
+  return t.modeAllCars;
 }
 
 function verdictChip(verdict: EvaluatedResult["verdict"]) {
@@ -151,12 +152,12 @@ function verdictChip(verdict: EvaluatedResult["verdict"]) {
   return "border-red-500/30 bg-red-500/10 text-red-300";
 }
 
-function verdictText(verdict: EvaluatedResult["verdict"], isBs: boolean) {
-  if (verdict === "correct") return isBs ? "Tačno" : "Correct";
-  if (verdict === "very_close") return isBs ? "Vrlo blizu" : "Very Close";
-  if (verdict === "partial") return isBs ? "Djelimično" : "Partial";
-  if (verdict === "weak") return isBs ? "Slabo" : "Weak";
-  return isBs ? "Netačno" : "Wrong";
+function verdictText(verdict: EvaluatedResult["verdict"], t: Messages) {
+  if (verdict === "correct") return t.verdictCorrect;
+  if (verdict === "very_close") return t.verdictVeryClose;
+  if (verdict === "partial") return t.verdictPartial;
+  if (verdict === "weak") return t.verdictWeak;
+  return t.verdictWrong;
 }
 
 function renderList(items?: string[]) {
@@ -170,6 +171,76 @@ function renderList(items?: string[]) {
         </li>
       ))}
     </ul>
+  );
+}
+
+function formatVehicleValue(label: string, value: unknown, t: Messages) {
+  if (typeof value === "boolean") return value ? t.yes : t.no;
+  if (typeof value === "number") {
+    if (label === t.power) return `${value} kW`;
+    return String(value);
+  }
+  if (!value) return "";
+
+  const raw = String(value);
+  if (raw === "petrol") return t.petrol;
+  if (raw === "diesel") return t.diesel;
+  if (raw === "turbo") return t.turbo;
+  if (raw === "na") return t.naturallyAspirated;
+  if (raw === "belt") return t.belt;
+  if (raw === "chain") return t.chain;
+  return raw;
+}
+
+function getVehicleDetails(question: ScenarioQuestion, t: Messages) {
+  const notes = question.scoring_notes || {};
+  const rows = [
+    { label: t.year, value: question.year ?? notes.year },
+    { label: t.power, value: question.power_kw ?? notes.power_kw },
+    { label: t.engineCode, value: question.engine_code ?? notes.engine_code },
+    { label: t.fuel, value: question.fuel_type ?? notes.fuel_type },
+    { label: t.induction, value: question.induction ?? notes.induction },
+    { label: t.timing, value: question.timing_type ?? notes.timing_type },
+    { label: t.emissions, value: question.emission_standard ?? notes.emission_standard },
+    { label: t.dpf, value: question.has_dpf ?? notes.has_dpf },
+    { label: t.startStop, value: question.has_start_stop ?? notes.has_start_stop },
+  ];
+
+  return rows
+    .map((row) => ({ ...row, value: formatVehicleValue(row.label, row.value, t) }))
+    .filter((row) => row.value);
+}
+
+function VehicleDetails({
+  question,
+  t,
+}: {
+  question: ScenarioQuestion;
+  t: Messages;
+}) {
+  const details = getVehicleDetails(question, t);
+
+  if (!details.length) return null;
+
+  return (
+    <div>
+      <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
+        {t.vehicleDetails}
+      </p>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        {details.map((row) => (
+          <div
+            key={row.label}
+            className="rounded-xl border border-white/10 bg-black/20 px-3 py-2"
+          >
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+              {row.label}
+            </p>
+            <p className="mt-1 text-sm font-bold text-zinc-100">{row.value}</p>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -217,6 +288,7 @@ function rememberLastEntry(value: string) {
 export default function TestPage() {
   const router = useRouter();
   const { locale } = useLocale();
+  const t = useMemo(() => getMessages(locale), [locale]);
   const testMode = String(router.query.mode || "all");
   const isBs = locale === "bs";
 
@@ -519,7 +591,7 @@ export default function TestPage() {
   }
 
   function handleQuit() {
-    const confirmed = window.confirm(isBs ? "Tako lako odustaješ?" : "Giving up that easily?");
+    const confirmed = window.confirm(t.quitConfirm);
     if (!confirmed) return;
     clearActiveTestSession();
     router.push(resolveEntryPath());
@@ -544,6 +616,7 @@ export default function TestPage() {
               body: JSON.stringify({
                 question,
                 userAnswer,
+                locale,
               }),
             });
 
@@ -577,10 +650,10 @@ export default function TestPage() {
     return questions.map((question, index) => {
       const answerState = answers[index] || { answer: "", timedOut: false, timeSpent: 0 };
       const ai = aiResults[index];
-      const fallback = buildLocalFallbackEvaluation(answerState.answer, isBs);
+      const fallback = buildLocalFallbackEvaluation(answerState.answer, isBs, t);
 
       const score = ai?.score ?? fallback.score;
-      const rank = isBs ? getRankBs(score) : getRank(score);
+      const rank = getRank(score, isBs);
 
       return {
         question,
@@ -590,8 +663,8 @@ export default function TestPage() {
           rank,
           feedback: ai
             ? isBs
-              ? `Ocjena: ${ai.score} / 10 — ${ai.reason_short || "AI evaluator je obradio odgovor."}`
-              : `Score: ${ai.score} / 10 — ${ai.reason_short || "AI evaluator processed the answer."}`
+              ? `${t.scoreLabel}: ${ai.score} / 10 — ${ai.reason_short || t.evaluationProcessed}`
+              : `${t.scoreLabel}: ${ai.score} / 10 — ${ai.reason_short || t.evaluationProcessed}`
             : fallback.feedback,
           diagnosisPercent: ai?.diagnosis_percent ?? fallback.diagnosisPercent,
           bonus: ai?.bonus ?? fallback.bonus,
@@ -600,7 +673,7 @@ export default function TestPage() {
         } as EvaluatedResult,
       };
     });
-  }, [answers, aiResults, isBs, questions]);
+  }, [answers, aiResults, isBs, questions, t]);
 
   const averageScore = useMemo(() => {
     if (!results.length) return 0;
@@ -608,7 +681,7 @@ export default function TestPage() {
     return Number((total / results.length).toFixed(1));
   }, [results]);
 
-  const finalRank = isBs ? getRankBs(averageScore) : getRank(averageScore);
+  const finalRank = getRank(averageScore, isBs);
   const answeredCount = answers.filter((entry) => entry?.answer?.trim().length > 0).length;
   const timedOutCount = answers.filter((entry) => entry?.timedOut).length;
   const aiEvaluationComplete =
@@ -675,10 +748,10 @@ export default function TestPage() {
         <div className="relative mx-auto flex min-h-screen w-full max-w-7xl flex-col px-4 py-3 sm:px-6 lg:px-8">
           <div className="mx-auto mt-10 w-full max-w-[1280px] rounded-[30px] border border-white/10 bg-white/5 p-8 backdrop-blur-md">
             <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-orange-400">
-              Mechanic IQ Test
+              {t.appName}
             </p>
             <h1 className="mt-3 text-4xl font-black tracking-tight">
-              {isBs ? "Učitavanje testa..." : "Loading test..."}
+              {t.loadingTest}
             </h1>
           </div>
         </div>
@@ -697,10 +770,10 @@ export default function TestPage() {
         <div className="relative mx-auto flex min-h-screen w-full max-w-7xl flex-col px-4 py-3 sm:px-6 lg:px-8">
           <div className="mx-auto mt-10 w-full max-w-[1280px] rounded-[30px] border border-red-500/20 bg-red-500/10 p-8 backdrop-blur-md">
             <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-red-300">
-              {isBs ? "Greška" : "Error"}
+              {t.error}
             </p>
             <h1 className="mt-3 text-3xl font-black tracking-tight">
-              {isBs ? "Test nije učitan" : "Test failed to load"}
+              {t.testFailed}
             </h1>
             <p className="mt-4 text-sm text-red-100">{loadError}</p>
             <div className="mt-6 grid gap-3 sm:grid-cols-2">
@@ -712,14 +785,14 @@ export default function TestPage() {
                 }}
                 className="rounded-2xl bg-orange-500 px-5 py-4 font-bold text-black transition hover:bg-orange-400"
               >
-                {isBs ? "Pokušaj ponovo" : "Try Again"}
+                {t.tryAgain}
               </button>
               <button
                 type="button"
                 onClick={() => router.push(resolveEntryPath())}
                 className="rounded-2xl border border-white/10 bg-black/20 px-5 py-4 text-center font-bold text-zinc-100 transition hover:bg-white/10"
               >
-                {isBs ? "Nazad" : "Back"}
+                {t.back}
               </button>
             </div>
           </div>
@@ -746,44 +819,42 @@ export default function TestPage() {
               onClick={handleQuit}
               className="rounded-xl border border-white/10 bg-black/20 px-4 py-2 text-sm font-semibold text-zinc-200 transition hover:bg-white/10"
             >
-              ← {isBs ? "Nazad" : "Back"}
+              ← {t.back}
             </button>
-            <h1 className="text-xl font-bold">{isBs ? "Rezultati testa" : "Test Results"}</h1>
+            <h1 className="text-xl font-bold">{t.testResults}</h1>
           </header>
 
           <div className="mx-auto w-full max-w-[1280px] py-6 overflow-visible">
             <section className="grid gap-6 xl:grid-cols-2">
               <div className="rounded-[30px] border border-white/10 bg-white/5 p-6 shadow-2xl backdrop-blur-md sm:p-8">
                 <div className="inline-flex items-center rounded-full border border-orange-500/35 bg-orange-500/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-orange-300">
-                  {isBs ? "Završen test" : "Completed Test"}
+                  {t.completedTest}
                 </div>
 
                 <h2 className="mt-6 text-5xl font-black leading-[0.95] tracking-tight sm:text-6xl">
-                  {isBs ? "Tvoj rezultat" : "Your Score"}
+                  {t.yourScore}
                 </h2>
 
                 <p className="mt-4 text-xl leading-8 text-zinc-200">
-                  {isBs
-                    ? "Dijagnosticiraj kvar, povećaj svoj rank i dokaži znanje."
-                    : "Diagnose the fault, increase your rank and prove knowledge."}
+                  {t.tagline}
                 </p>
 
                 <div className="mt-8 grid gap-4 sm:grid-cols-3">
                   <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
                     <p className="text-xs uppercase tracking-[0.2em] text-zinc-400">
-                      {isBs ? "Prosjek" : "Average"}
+                      {t.average}
                     </p>
                     <p className="mt-2 text-3xl font-black text-white">{averageScore.toFixed(1)}</p>
                   </div>
                   <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
                     <p className="text-xs uppercase tracking-[0.2em] text-zinc-400">
-                      {isBs ? "Rank" : "Rank"}
+                      {t.rank}
                     </p>
                     <p className="mt-2 text-2xl font-black text-orange-300">{finalRank}</p>
                   </div>
                   <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
                     <p className="text-xs uppercase tracking-[0.2em] text-zinc-400">
-                      {isBs ? "Odgovoreno" : "Answered"}
+                      {t.answered}
                     </p>
                     <p className="mt-2 text-3xl font-black text-white">
                       {answeredCount}/{results.length}
@@ -800,14 +871,14 @@ export default function TestPage() {
                     }}
                     className="rounded-2xl bg-orange-500 px-5 py-4 font-bold text-black transition hover:bg-orange-400"
                   >
-                    {isBs ? "Igraj ponovo" : "Play Again"}
+                    {t.playAgain}
                   </button>
                   <button
                     type="button"
                     onClick={() => router.push(resolveEntryPath())}
                     className="rounded-2xl border border-white/10 bg-black/20 px-5 py-4 text-center font-bold text-zinc-100 transition hover:bg-white/10"
                   >
-                    {isBs ? "Promijeni mod" : "Change Mode"}
+                    {t.changeMode}
                   </button>
                 </div>
               </div>
@@ -818,27 +889,27 @@ export default function TestPage() {
                     ⊕
                   </div>
                   <h3 className="text-[34px] font-black tracking-tight text-white">
-                    {isBs ? "Sažetak" : "Summary"}
+                    {t.summary}
                   </h3>
                 </div>
 
                 <div className="mt-7 space-y-4">
                   <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-zinc-200">
-                    {isBs ? "Mod" : "Mode"}:{" "}
-                    <span className="font-bold text-white">{modeLabel(testMode, isBs)}</span>
+                    {t.mode}:{" "}
+                    <span className="font-bold text-white">{modeLabel(testMode, t)}</span>
                   </div>
                   <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-zinc-200">
-                    {isBs ? "Pitanja" : "Questions"}:{" "}
+                    {t.questions}:{" "}
                     <span className="font-bold text-white">{results.length}</span>
                   </div>
                   <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-zinc-200">
-                    {isBs ? "Isteklo vremena" : "Timed Out"}:{" "}
+                    {t.timedOut}:{" "}
                     <span className="font-bold text-white">{timedOutCount}</span>
                   </div>
                   <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-zinc-200">
-                    {isBs ? "AI evaluacija" : "AI Evaluation"}:{" "}
+                    {t.aiEvaluation}:{" "}
                     <span className="font-bold text-white">
-                      {evaluating ? (isBs ? "U toku..." : "In progress...") : (isBs ? "Završeno" : "Completed")}
+                      {evaluating ? t.inProgress : t.completed}
                     </span>
                   </div>
                 </div>
@@ -853,7 +924,7 @@ export default function TestPage() {
                 >
                   <div className="flex flex-wrap items-center gap-3">
                     <div className="rounded-full border border-white/10 bg-black/20 px-4 py-2 text-sm font-semibold text-zinc-200">
-                      {isBs ? "Pitanje" : "Question"} {index + 1}
+                      {t.question} {index + 1}
                     </div>
                     <div
                       className={`rounded-full border px-4 py-2 text-sm font-semibold ${difficultyBadgeClasses(item.question.difficulty)}`}
@@ -863,7 +934,7 @@ export default function TestPage() {
                     <div
                       className={`rounded-full border px-4 py-2 text-sm font-semibold ${verdictChip(item.evaluation.verdict)}`}
                     >
-                      {verdictText(item.evaluation.verdict, isBs)}
+                      {verdictText(item.evaluation.verdict, t)}
                     </div>
                     <div className="ml-auto rounded-full border border-orange-500/30 bg-orange-500/10 px-4 py-2 text-sm font-bold text-orange-300">
                       {item.evaluation.score}/10
@@ -874,15 +945,17 @@ export default function TestPage() {
                     <div className="space-y-4">
                       <div>
                         <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
-                          {isBs ? "Vozilo" : "Vehicle"}
+                          {t.vehicle}
                         </p>
                         <p className="mt-2 text-lg font-bold text-white">{item.question.vehicle || "—"}</p>
                       </div>
 
+                      <VehicleDetails question={item.question} t={t} />
+
                       {item.question.title ? (
                         <div>
                           <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
-                            {isBs ? "Scenario" : "Scenario"}
+                            {t.scenario}
                           </p>
                           <p className="mt-2 text-zinc-200">{item.question.title}</p>
                         </div>
@@ -891,9 +964,36 @@ export default function TestPage() {
                       {renderList(item.question.symptoms) ? (
                         <div>
                           <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
-                            {isBs ? "Simptomi" : "Symptoms"}
+                            {t.symptoms}
                           </p>
                           <div className="mt-2">{renderList(item.question.symptoms)}</div>
+                        </div>
+                      ) : null}
+
+                      {renderList(item.question.driving) ? (
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
+                            {t.driving}
+                          </p>
+                          <div className="mt-2">{renderList(item.question.driving)}</div>
+                        </div>
+                      ) : null}
+
+                      {renderList(item.question.extra) ? (
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
+                            {t.extra}
+                          </p>
+                          <div className="mt-2">{renderList(item.question.extra)}</div>
+                        </div>
+                      ) : null}
+
+                      {renderList(item.question.hint) ? (
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
+                            {t.scannerHint}
+                          </p>
+                          <div className="mt-2">{renderList(item.question.hint)}</div>
                         </div>
                       ) : null}
                     </div>
@@ -901,20 +1001,18 @@ export default function TestPage() {
                     <div className="space-y-4">
                       <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
                         <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
-                          {isBs ? "Tvoj odgovor" : "Your Answer"}
+                          {t.yourAnswer}
                         </p>
                         <p className="mt-3 whitespace-pre-wrap text-zinc-100">
                           {item.answerState.answer?.trim()
                             ? item.answerState.answer
-                            : isBs
-                            ? "Nema odgovora."
-                            : "No answer."}
+                            : t.noAnswer}
                         </p>
                       </div>
 
                       <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
                         <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
-                          {isBs ? "Povratna informacija" : "Feedback"}
+                          {t.feedback}
                         </p>
                         <p className="mt-3 text-zinc-200">{item.evaluation.feedback}</p>
                       </div>
@@ -922,7 +1020,7 @@ export default function TestPage() {
                       <div className="grid gap-3 sm:grid-cols-2">
                         <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
                           <p className="text-xs uppercase tracking-[0.22em] text-zinc-400">
-                            {isBs ? "Dijagnoza" : "Diagnosis"}
+                            {t.diagnosis}
                           </p>
                           <p className="mt-2 text-2xl font-black text-white">
                             {item.evaluation.diagnosisPercent}%
@@ -930,7 +1028,7 @@ export default function TestPage() {
                         </div>
                         <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
                           <p className="text-xs uppercase tracking-[0.22em] text-zinc-400">
-                            {isBs ? "Bonus" : "Bonus"}
+                            {t.bonus}
                           </p>
                           <p className="mt-2 text-2xl font-black text-white">+{item.evaluation.bonus}</p>
                         </div>
@@ -939,7 +1037,7 @@ export default function TestPage() {
                       {item.evaluation.matchedCause ? (
                         <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
                           <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
-                            {isBs ? "Prepoznat uzrok" : "Matched Cause"}
+                            {t.matchedCause}
                           </p>
                           <p className="mt-3 text-zinc-100">{item.evaluation.matchedCause}</p>
                         </div>
@@ -948,12 +1046,12 @@ export default function TestPage() {
                       <div className="grid gap-4 lg:grid-cols-3">
                         {item.question.answer_main ? (
                           <PreviewCard
-                            title={isBs ? "Najvjerovatniji uzrok" : "Most Likely Cause"}
+                            title={t.mostLikelyCause}
                             content={item.question.answer_main}
-                            buttonText={isBs ? "Prikaži više" : "See more"}
+                            buttonText={t.showMore}
                             onOpen={() =>
                               setDetailModal({
-                                title: isBs ? "Najvjerovatniji uzrok" : "Most Likely Cause",
+                                title: t.mostLikelyCause,
                                 content: item.question.answer_main || "",
                               })
                             }
@@ -962,12 +1060,12 @@ export default function TestPage() {
 
                         {item.question.answer_why_no_code ? (
                           <PreviewCard
-                            title={isBs ? "ECU ne pokazuje grešku" : "Why ECU May Not Set a Fault"}
+                            title={t.whyNoFault}
                             content={item.question.answer_why_no_code}
-                            buttonText={isBs ? "Prikaži više" : "See more"}
+                            buttonText={t.showMore}
                             onOpen={() =>
                               setDetailModal({
-                                title: isBs ? "Zašto ECU ne baca grešku" : "Why ECU May Not Set a Fault",
+                                title: t.whyNoFault,
                                 content: item.question.answer_why_no_code || "",
                               })
                             }
@@ -976,12 +1074,12 @@ export default function TestPage() {
 
                         {Array.isArray(item.question.answer_proof) && item.question.answer_proof.length ? (
                           <PreviewCard
-                            title={isBs ? "Kako dokazati" : "How to Prove It"}
+                            title={t.howToProve}
                             content={item.question.answer_proof}
-                            buttonText={isBs ? "Prikaži više" : "See more"}
+                            buttonText={t.showMore}
                             onOpen={() =>
                               setDetailModal({
-                                title: isBs ? "Kako dokazati" : "How to Prove It",
+                                title: t.howToProve,
                                 content: item.question.answer_proof || [],
                               })
                             }
@@ -1005,7 +1103,7 @@ export default function TestPage() {
                       onClick={() => setDetailModal(null)}
                       className="rounded-xl border border-white/10 bg-black/20 px-4 py-2 text-sm font-bold text-zinc-200 transition hover:bg-white/10"
                     >
-                      {isBs ? "Zatvori" : "Close"}
+                      {t.close}
                     </button>
                   </div>
 
@@ -1042,15 +1140,13 @@ export default function TestPage() {
                     ⊕
                   </div>
                   <p className="mt-5 text-[11px] font-semibold uppercase tracking-[0.24em] text-orange-400">
-                    AI Evaluation
+                    {t.aiEvaluation}
                   </p>
                   <h3 className="mt-3 text-3xl font-black tracking-tight text-white">
-                    {isBs ? "AI evaluacija u toku..." : "AI evaluation in progress..."}
+                    {t.evaluatingTitle}
                   </h3>
                   <p className="mt-3 text-sm leading-6 text-zinc-300">
-                    {isBs
-                      ? "Sačekaj nekoliko trenutaka dok AI pregleda sve odgovore i izračuna finalni rezultat."
-                      : "Please wait a few moments while AI reviews all answers and calculates the final score."}
+                    {t.evaluatingBody}
                   </p>
                 </div>
               </div>
@@ -1082,11 +1178,11 @@ export default function TestPage() {
             onClick={handleQuit}
             className="rounded-xl border border-white/10 bg-black/20 px-4 py-2 text-sm font-semibold text-zinc-200 transition hover:bg-white/10"
           >
-            ← {isBs ? "Nazad" : "Back"}
+            ← {t.back}
           </button>
 
           <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm font-semibold text-zinc-200">
-            <span>{modeLabel(testMode, isBs)}</span>
+            <span>{modeLabel(testMode, t)}</span>
           </div>
         </header>
 
@@ -1095,23 +1191,21 @@ export default function TestPage() {
             <div className="rounded-[30px] border border-white/10 bg-white/5 p-6 shadow-2xl backdrop-blur-md sm:p-8">
               <div className="inline-flex items-center gap-2 rounded-full border border-orange-500/35 bg-orange-500/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-orange-300">
                 <span>🛠️</span>
-                <span>{isBs ? "Test u toku" : "Test in progress"}</span>
+                <span>{t.testInProgress}</span>
               </div>
 
               <h2 className="mt-6 text-4xl font-black leading-[0.95] tracking-tight sm:text-5xl">
-                {isBs ? "Dijagnosticiraj kvar" : "Diagnose the fault"}
+                {t.diagnoseFault}
               </h2>
 
               <p className="mt-4 text-lg leading-8 text-zinc-200">
-                {isBs
-                  ? "Napiši najvjerovatniji uzrok i po želji dodaj kako bi potvrdio kvar."
-                  : "Write the most likely root cause and optionally add how you would confirm it."}
+                {t.testInstruction}
               </p>
 
               <div className="mt-8 grid grid-cols-3 gap-2 sm:gap-3">
                 <div className="rounded-xl border border-white/10 bg-black/20 p-3 sm:rounded-2xl sm:p-4">
                   <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-400 sm:text-xs sm:tracking-[0.2em]">
-                    {isBs ? "Zadatak" : "Task"}
+                    {t.task}
                   </p>
                   <p className="mt-1 text-xl font-black text-white sm:mt-2 sm:text-3xl">
                     {currentIndex + 1}/{questions.length}
@@ -1120,7 +1214,7 @@ export default function TestPage() {
 
                 <div className="rounded-xl border border-white/10 bg-black/20 p-3 sm:rounded-2xl sm:p-4">
                   <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-400 sm:text-xs sm:tracking-[0.2em]">
-                    {isBs ? "Vrijeme" : "Timer"}
+                    {t.timer}
                   </p>
                   <p
                     className={`mt-1 text-xl font-black sm:mt-2 sm:text-3xl ${
@@ -1133,7 +1227,7 @@ export default function TestPage() {
 
                 <div className="rounded-xl border border-white/10 bg-black/20 p-3 sm:rounded-2xl sm:p-4">
                   <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-400 sm:text-xs sm:tracking-[0.2em]">
-                    {isBs ? "Težina" : "Difficulty"}
+                    {t.difficulty}
                   </p>
                   <div
                     className={`mt-1 inline-flex rounded-full border px-3 py-1 text-xs font-bold sm:mt-2 sm:px-4 sm:py-2 sm:text-sm ${difficultyBadgeClasses(
@@ -1147,7 +1241,7 @@ export default function TestPage() {
 
               <div className="mt-7">
                 <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-[0.2em] text-zinc-400">
-                  <span>{isBs ? "Napredak" : "Progress"}</span>
+                  <span>{t.progress}</span>
                   <span>{Math.round(progress)}%</span>
                 </div>
                 <div className="mt-3 h-3 overflow-hidden rounded-full bg-white/10">
@@ -1164,16 +1258,18 @@ export default function TestPage() {
                 {currentQuestion?.vehicle ? (
                   <div>
                     <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
-                      {isBs ? "Vozilo" : "Vehicle"}
+                      {t.vehicle}
                     </p>
                     <p className="mt-2 text-2xl font-black text-white">{currentQuestion.vehicle}</p>
                   </div>
                 ) : null}
 
+                <VehicleDetails question={currentQuestion!} t={t} />
+
                 {currentQuestion?.title ? (
                   <div>
                     <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
-                      {isBs ? "Scenario" : "Scenario"}
+                      {t.scenario}
                     </p>
                     <p className="mt-2 text-zinc-200">{currentQuestion.title}</p>
                   </div>
@@ -1182,7 +1278,7 @@ export default function TestPage() {
                 {Array.isArray(currentQuestion?.symptoms) && currentQuestion.symptoms.length ? (
                   <div>
                     <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
-                      {isBs ? "Simptomi" : "Symptoms"}
+                      {t.symptoms}
                     </p>
                     <div className="mt-3">{renderList(currentQuestion.symptoms)}</div>
                   </div>
@@ -1191,7 +1287,7 @@ export default function TestPage() {
                 {Array.isArray(currentQuestion?.driving) && currentQuestion.driving.length ? (
                   <div>
                     <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
-                      {isBs ? "Tok vožnje" : "Driving"}
+                      {t.driving}
                     </p>
                     <div className="mt-3">{renderList(currentQuestion.driving)}</div>
                   </div>
@@ -1200,9 +1296,27 @@ export default function TestPage() {
                 {Array.isArray(currentQuestion?.extra) && currentQuestion.extra.length ? (
                   <div>
                     <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
-                      {isBs ? "Dodatno" : "Extra"}
+                      {t.extra}
                     </p>
                     <div className="mt-3">{renderList(currentQuestion.extra)}</div>
+                  </div>
+                ) : null}
+
+                {Array.isArray(currentQuestion?.key_details) && currentQuestion.key_details.length ? (
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
+                      {t.workshopClues}
+                    </p>
+                    <div className="mt-3">{renderList(currentQuestion.key_details)}</div>
+                  </div>
+                ) : null}
+
+                {Array.isArray(currentQuestion?.hint) && currentQuestion.hint.length ? (
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
+                      {t.scannerHint}
+                    </p>
+                    <div className="mt-3">{renderList(currentQuestion.hint)}</div>
                   </div>
                 ) : null}
               </div>
@@ -1215,19 +1329,17 @@ export default function TestPage() {
                     ⊕
                   </div>
                   <h3 className="text-[34px] font-black tracking-tight text-white">
-                    {isBs ? "Odgovor" : "Answer"}
+                    {t.answer}
                   </h3>
                 </div>
 
                 {Array.isArray(currentQuestion?.questions) && currentQuestion.questions.length ? (
                   <div className="mt-7 rounded-2xl border border-white/10 bg-black/20 p-4">
                     <p className="text-xs uppercase tracking-[0.22em] text-orange-400">
-                      {isBs ? "Zadatak" : "Task"}
+                      {t.answerTaskTitle}
                     </p>
                     <p className="mt-3 text-sm leading-6 text-zinc-300">
-                      {isBs
-                        ? "Upiši najvjerovatniji uzrok. Dodatno možeš navesti kako bi najlakše dokazao kvar."
-                        : "Write the most likely root cause. You can also add how you would best confirm the fault."}
+                      {t.answerTaskHelp}
                     </p>
                   </div>
                 ) : null}
@@ -1247,7 +1359,7 @@ export default function TestPage() {
                     onClick={handleQuit}
                     className="rounded-2xl border border-white/12 bg-white/5 px-5 py-4 font-bold text-white transition hover:bg-white/10"
                   >
-                    {isBs ? "Odustani" : "Quit"}
+                    {t.quit}
                   </button>
 
                   <button
@@ -1256,19 +1368,15 @@ export default function TestPage() {
                     className="rounded-2xl bg-orange-500 px-5 py-4 font-bold text-black transition hover:bg-orange-400"
                   >
                     {currentIndex === questions.length - 1
-                      ? isBs
-                        ? "Završi test"
-                        : "Finish Test"
-                      : isBs
-                      ? "Odgovori"
-                      : "Submit"}
+                      ? t.finishTest
+                      : t.submit}
                   </button>
                 </div>
 
                 <div className="mt-6 grid gap-3 sm:grid-cols-2">
                   <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
                     <p className="text-xs uppercase tracking-[0.2em] text-zinc-400">
-                      {isBs ? "Vrijeme za pitanje" : "Question Time"}
+                      {t.questionTime}
                     </p>
                     <div className="mt-3 h-3 overflow-hidden rounded-full bg-white/10">
                       <div
@@ -1282,9 +1390,7 @@ export default function TestPage() {
                   </div>
 
                   <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm leading-6 text-zinc-300">
-                    {isBs
-                      ? "Ako vrijeme istekne, pitanje se automatski zaključava i prelaziš na sljedeće."
-                      : "If time runs out, the question locks automatically and moves to the next one."}
+                    {t.timeoutHelp}
                   </div>
                 </div>
               </div>

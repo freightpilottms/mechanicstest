@@ -38,9 +38,9 @@ export const TIME_LIMITS: Record<Difficulty, number> = {
 };
 
 export const DIFFICULTY_LABELS = {
-  easy: { en: "Easy", bs: "Lako" },
+  easy: { en: "Easy", bs: "Lagano" },
   medium: { en: "Medium", bs: "Srednje" },
-  hard: { en: "Hard", bs: "Teško" },
+  hard: { en: "Hard", bs: "Teže" },
 } as const;
 
 export const mockQuestions: MockQuestion[] = [

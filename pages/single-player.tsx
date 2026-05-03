@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { useLocale } from "@/lib/locale-context";
+import { getMessages } from "@/lib/i18n";
 import { useEffect, useMemo, useState } from "react";
 import {
   getLocalLeaderboard,
@@ -10,37 +11,21 @@ import {
 const modes = [
   {
     key: "all",
-    titleEn: "All Cars Diagnosis",
-    titleBs: "Dijagnostika svih vozila",
-    descEn: "Mixed scenarios from EU, US and Asia.",
-    descBs: "Miješani scenariji EU, US i Azija.",
     color: "from-orange-500 to-amber-400",
     icon: "🌍",
   },
   {
     key: "eu",
-    titleEn: "European Cars",
-    titleBs: "Evropska vozila",
-    descEn: "Audi, BMW, Mercedes, VW.",
-    descBs: "Audi, BMW, Mercedes, VW.",
     color: "from-sky-500 to-cyan-400",
     icon: "🇪🇺",
   },
   {
     key: "us",
-    titleEn: "US Cars",
-    titleBs: "Američka vozila",
-    descEn: "Ford, GM, Dodge.",
-    descBs: "Ford, GM, Dodge.",
     color: "from-red-500 to-rose-400",
     icon: "🇺🇸",
   },
   {
     key: "asia",
-    titleEn: "Asia Cars",
-    titleBs: "Azijska vozila",
-    descEn: "Toyota, Honda, Hyundai.",
-    descBs: "Toyota, Honda, Hyundai.",
     color: "from-emerald-500 to-lime-400",
     icon: "🌏",
   },
@@ -48,8 +33,12 @@ const modes = [
 
 type ModeOption = (typeof modes)[number];
 
-function formatOrdinal(n: number, isBs: boolean) {
-  if (!n || n < 1) return isBs ? "Ti: —" : "You: —";
+function formatOrdinal(n: number, isBs: boolean, youLabel: string) {
+  if (!n || n < 1) return `${youLabel}: —`;
+
+  if (isBs) {
+    return `${youLabel}: ${n}.`;
+  }
 
   const suffix =
     n % 10 === 1 && n % 100 !== 11
@@ -60,7 +49,7 @@ function formatOrdinal(n: number, isBs: boolean) {
       ? "rd"
       : "th";
 
-  return `${isBs ? "Ti" : "You"}: ${n}${suffix}`;
+  return `${youLabel}: ${n}${suffix}`;
 }
 
 function getBestPlayerPosition(rows: LeaderboardEntry[], playerName = "You") {
@@ -85,6 +74,7 @@ function LeaderboardCard({
   loading,
   emptyText,
   positionLabel,
+  loadingText,
   showYouRow = false,
   youRow,
 }: {
@@ -93,6 +83,7 @@ function LeaderboardCard({
   loading: boolean;
   emptyText: string;
   positionLabel: string;
+  loadingText: string;
   showYouRow?: boolean;
   youRow?: LeaderboardEntry | null;
 }) {
@@ -110,7 +101,7 @@ function LeaderboardCard({
 
       {loading ? (
         <div className="mt-5 rounded-2xl border border-white/8 bg-black/20 px-4 py-6 text-sm text-zinc-400">
-          Loading...
+          {loadingText}
         </div>
       ) : rows.length === 0 ? (
         <div className="mt-5 rounded-2xl border border-white/8 bg-black/20 px-4 py-6 text-sm text-zinc-400">
@@ -175,9 +166,10 @@ function LeaderboardCard({
 export default function SinglePlayerPage() {
   const router = useRouter();
   const { locale, setLocale } = useLocale();
+  const t = useMemo(() => getMessages(locale), [locale]);
   const isBs = locale === "bs";
 
-  const [selected, setSelected] = useState<ModeOption>(modes[0]);
+  const [selectedKey, setSelectedKey] = useState<ModeOption["key"]>(modes[0].key);
   const [allLocalRows, setAllLocalRows] = useState<LeaderboardEntry[]>([]);
   const [globalRows, setGlobalRows] = useState<LeaderboardEntry[]>([]);
   const [globalLoading, setGlobalLoading] = useState(true);
@@ -224,6 +216,24 @@ export default function SinglePlayerPage() {
 
   const localYouRow = useMemo(() => getYouRow(allLocalRows), [allLocalRows]);
   const globalYouRow = useMemo(() => getYouRow(globalRows), [globalRows]);
+  const selected = useMemo(
+    () => modes.find((mode) => mode.key === selectedKey) || modes[0],
+    [selectedKey]
+  );
+
+  function modeTitle(mode: ModeOption) {
+    if (mode.key === "eu") return t.modeEuropean;
+    if (mode.key === "us") return t.modeUs;
+    if (mode.key === "asia") return t.modeAsia;
+    return t.modeAllCars;
+  }
+
+  function modeDescription(mode: ModeOption) {
+    if (mode.key === "eu") return t.modeEuropeanDesc;
+    if (mode.key === "us") return t.modeUsDesc;
+    if (mode.key === "asia") return t.modeAsiaDesc;
+    return t.modeAllCarsDesc;
+  }
 
   function startGame() {
     if (typeof window !== "undefined") {
@@ -231,30 +241,6 @@ export default function SinglePlayerPage() {
     }
     router.push(`/test?mode=${selected.key}`);
   }
-
-  const rules = isBs
-    ? [
-        "10 pitanja po testu",
-        "4 minute po pitanju",
-        "Rezultati se prikazuju tek na kraju",
-      ]
-    : [
-        "10 questions per test",
-        "4 minutes per question",
-        "Results are shown only at the end",
-      ];
-
-  const scoring = isBs
-    ? [
-        "Glavni uzrok nosi najviše bodova",
-        "Djelimično tačan odgovor nosi manje bodova",
-        "Dodatno objašnjenje može donijeti bonus",
-      ]
-    : [
-        "Main cause gives the highest score",
-        "Partially correct answers give fewer points",
-        "Extra explanation can add a bonus",
-      ];
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#090b10] text-white">
@@ -271,7 +257,7 @@ export default function SinglePlayerPage() {
               href="/"
               className="rounded-xl border border-white/10 bg-black/20 px-4 py-2 text-sm font-semibold text-zinc-200 transition hover:bg-white/10"
             >
-              ← {isBs ? "Nazad" : "Back"}
+              ← {t.back}
             </Link>
 
             <div>
@@ -279,7 +265,7 @@ export default function SinglePlayerPage() {
                 AI GARAGE
               </p>
               <h1 className="mt-1 text-xl font-bold tracking-tight sm:text-2xl">
-                Single Player
+                {t.soloTest}
               </h1>
             </div>
           </div>
@@ -312,7 +298,7 @@ export default function SinglePlayerPage() {
           <section className="grid gap-6 py-6 xl:grid-cols-2">
             <div className="rounded-[30px] border border-white/10 bg-white/5 p-6 backdrop-blur-md">
               <h2 className="text-3xl font-black">
-                {isBs ? "Odaberi mod" : "Choose Mode"}
+                {t.chooseMode}
               </h2>
 
               <div className="mt-6 grid gap-4">
@@ -322,7 +308,7 @@ export default function SinglePlayerPage() {
                   return (
                     <button
                       key={m.key}
-                      onClick={() => setSelected(m)}
+                      onClick={() => setSelectedKey(m.key)}
                       className={`rounded-2xl border p-4 text-left transition ${
                         active
                           ? "border-orange-500 bg-white/10"
@@ -338,10 +324,10 @@ export default function SinglePlayerPage() {
 
                         <div>
                           <h3 className="font-bold">
-                            {isBs ? m.titleBs : m.titleEn}
+                            {modeTitle(m)}
                           </h3>
                           <p className="text-sm text-zinc-400">
-                            {isBs ? m.descBs : m.descEn}
+                            {modeDescription(m)}
                           </p>
                         </div>
                       </div>
@@ -353,19 +339,19 @@ export default function SinglePlayerPage() {
 
             <div className="rounded-[30px] border border-white/10 bg-white/5 p-6 backdrop-blur-md">
               <h2 className="text-3xl font-black">
-                {isBs ? selected.titleBs : selected.titleEn}
+                {modeTitle(selected)}
               </h2>
 
               <p className="mt-3 text-zinc-300">
-                {isBs ? selected.descBs : selected.descEn}
+                {modeDescription(selected)}
               </p>
 
               <div className="mt-6">
                 <p className="text-xs uppercase tracking-[0.2em] text-orange-400">
-                  {isBs ? "Pravila" : "Rules"}
+                  {t.rules}
                 </p>
                 <ul className="mt-3 space-y-2 text-sm text-zinc-300">
-                  {rules.map((r) => (
+                  {t.singleRules.map((r) => (
                     <li key={r}>• {r}</li>
                   ))}
                 </ul>
@@ -373,10 +359,10 @@ export default function SinglePlayerPage() {
 
               <div className="mt-6">
                 <p className="text-xs uppercase tracking-[0.2em] text-orange-400">
-                  {isBs ? "Bodovanje" : "Scoring"}
+                  {t.scoring}
                 </p>
                 <ul className="mt-3 space-y-2 text-sm text-zinc-300">
-                  {scoring.map((s) => (
+                  {t.singleScoring.map((s) => (
                     <li key={s}>• {s}</li>
                   ))}
                 </ul>
@@ -386,34 +372,30 @@ export default function SinglePlayerPage() {
                 onClick={startGame}
                 className="mt-8 w-full rounded-2xl bg-orange-500 py-4 font-bold text-black transition hover:bg-orange-400"
               >
-                {isBs ? "Započni test" : "Start Test"}
+                {t.startTest}
               </button>
             </div>
           </section>
 
           <section className="grid gap-6 pb-4 xl:grid-cols-2">
             <LeaderboardCard
-              title="You vs Friends"
+              title={t.localLeaderboardTitle}
               rows={allLocalRows}
               loading={false}
-              emptyText={
-                isBs ? "Još nema lokalnih rezultata." : "No local results yet."
-              }
-              positionLabel={formatOrdinal(localPosition || 0, isBs)}
+              emptyText={t.noLocalResults}
+              positionLabel={formatOrdinal(localPosition || 0, isBs, t.you)}
+              loadingText={t.loading}
               showYouRow={!!localYouRow && (localPosition || 0) > 8}
               youRow={localYouRow}
             />
 
             <LeaderboardCard
-              title="Worldwide Score"
+              title={t.globalLeaderboardTitle}
               rows={globalRows}
               loading={globalLoading}
-              emptyText={
-                isBs
-                  ? "Globalni ranking još je prazan."
-                  : "Global leaderboard is still empty."
-              }
-              positionLabel={formatOrdinal(globalPosition || 0, isBs)}
+              emptyText={t.noGlobalResults}
+              positionLabel={formatOrdinal(globalPosition || 0, isBs, t.you)}
+              loadingText={t.loading}
               showYouRow={!!globalYouRow && (globalPosition || 0) > 8}
               youRow={globalYouRow}
             />

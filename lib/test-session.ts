@@ -11,6 +11,15 @@ export type ScenarioQuestion = {
   difficulty: Difficulty;
   title: string;
   vehicle: string;
+  year?: number;
+  power_kw?: number;
+  engine_code?: string;
+  fuel_type?: string;
+  induction?: string;
+  timing_type?: string;
+  has_start_stop?: boolean;
+  has_dpf?: boolean;
+  emission_standard?: string;
   symptoms: string[];
   driving: string[];
   extra: string[];

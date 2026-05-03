@@ -7,8 +7,12 @@ import {
   type LeaderboardEntry,
 } from "@/lib/leaderboard";
 
-function formatOrdinal(n: number, isBs: boolean) {
-  if (!n || n < 1) return isBs ? "Ti: —" : "You: —";
+function formatOrdinal(n: number, isBs: boolean, youLabel: string) {
+  if (!n || n < 1) return `${youLabel}: —`;
+
+  if (isBs) {
+    return `${youLabel}: ${n}.`;
+  }
 
   const suffix =
     n % 10 === 1 && n % 100 !== 11
@@ -19,7 +23,7 @@ function formatOrdinal(n: number, isBs: boolean) {
       ? "rd"
       : "th";
 
-  return `${isBs ? "Ti" : "You"}: ${n}${suffix}`;
+  return `${youLabel}: ${n}${suffix}`;
 }
 
 function getBestPlayerPosition(rows: LeaderboardEntry[], playerName = "You") {
@@ -44,6 +48,7 @@ function LeaderboardCard({
   loading,
   emptyText,
   positionLabel,
+  loadingText,
   showYouRow = false,
   youRow,
 }: {
@@ -52,6 +57,7 @@ function LeaderboardCard({
   loading: boolean;
   emptyText: string;
   positionLabel: string;
+  loadingText: string;
   showYouRow?: boolean;
   youRow?: LeaderboardEntry | null;
 }) {
@@ -69,7 +75,7 @@ function LeaderboardCard({
 
       {loading ? (
         <div className="mt-5 rounded-2xl border border-white/8 bg-black/20 px-4 py-6 text-sm text-zinc-400">
-          Loading...
+          {loadingText}
         </div>
       ) : rows.length === 0 ? (
         <div className="mt-5 rounded-2xl border border-white/8 bg-black/20 px-4 py-6 text-sm text-zinc-400">
@@ -183,32 +189,6 @@ export default function HomePage() {
   const localYouRow = useMemo(() => getYouRow(allLocalRows), [allLocalRows]);
   const globalYouRow = useMemo(() => getYouRow(globalRows), [globalRows]);
 
-  const howItWorksRules = isBs
-    ? [
-        "10 dijagnostičkih scenarija po testu.",
-        "4 minute za svako pitanje.",
-        "Najviše bodova nosi glavni i najvjerovatniji uzrok.",
-        "Konačni rezultat i rank dobijaš tek na kraju testa.",
-      ]
-    : [
-        "10 diagnostic scenarios per test.",
-        "4 minutes for each question.",
-        "The main and most likely root cause gives the most points.",
-        "Your final score and rank are shown only at the end of the test.",
-      ];
-
-  const howItWorksScoring = isBs
-    ? [
-        "Glavni uzrok nosi najviše bodova.",
-        "Djelimično tačan odgovor dobija umanjene bodove.",
-        "Dodatno objašnjenje i način potvrde kvara mogu povećati ocjenu.",
-      ]
-    : [
-        "Main root cause gives the highest score.",
-        "Partially correct answers receive reduced points.",
-        "Extra explanation and proof steps can improve the score.",
-      ];
-
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#090b10] text-white">
       <div
@@ -259,7 +239,7 @@ export default function HomePage() {
               <div className="max-w-2xl">
                 <div className="inline-flex items-center justify-center gap-2 rounded-full border border-orange-500/35 bg-orange-500/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-orange-300">
                   <span>🛠️</span>
-                  <span>AI Diagnostic Challenge</span>
+                  <span>{t.heroBadge}</span>
                 </div>
 
                 <h2 className="mt-6 text-5xl font-black leading-[0.95] tracking-tight sm:text-6xl">
@@ -267,9 +247,7 @@ export default function HomePage() {
                 </h2>
 
                 <p className="mt-4 max-w-2xl text-xl leading-8 text-zinc-200">
-                  {isBs
-                    ? "Dijagnosticiraj kvar, povećaj svoj rank i dokaži znanje."
-                    : "Diagnose faults, increase your rank and prove knowledge."}
+                  {t.heroCopy}
                 </p>
 
                 <div className="mt-8 grid gap-4 sm:max-w-xl">
@@ -291,9 +269,7 @@ export default function HomePage() {
 
                 <div className="mt-7 flex justify-center">
                   <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/10 px-5 py-3 text-center text-base font-semibold text-emerald-300">
-                    {isBs
-                      ? "Trial uključuje 2 besplatna testa od po 10 pitanja"
-                      : "Trial includes 2 free tests of 10 questions"}
+                    {t.trialText}
                   </div>
                 </div>
               </div>
@@ -305,17 +281,17 @@ export default function HomePage() {
                   ⊕
                 </div>
                 <h3 className="text-[34px] font-black tracking-tight text-white">
-                  How it works
+                  {t.homeHowItWorks}
                 </h3>
               </div>
 
               <div className="mt-7">
                 <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-orange-400">
-                  {isBs ? "Pravila" : "Rules"}
+                  {t.rules}
                 </p>
 
                 <div className="mt-4 space-y-4">
-                  {howItWorksRules.map((item) => (
+                  {t.homeRules.map((item) => (
                     <div
                       key={item}
                       className="flex items-start gap-3 text-[18px] leading-8 text-zinc-200"
@@ -329,11 +305,11 @@ export default function HomePage() {
 
               <div className="mt-7 border-t border-white/10 pt-7">
                 <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-orange-400">
-                  {isBs ? "Bodovanje" : "Scoring"}
+                  {t.scoring}
                 </p>
 
                 <div className="mt-4 space-y-4">
-                  {howItWorksScoring.map((item) => (
+                  {t.homeScoring.map((item) => (
                     <div
                       key={item}
                       className="flex items-start gap-3 text-[18px] leading-8 text-zinc-200"
@@ -349,27 +325,23 @@ export default function HomePage() {
 
           <section className="grid gap-6 pb-4 xl:grid-cols-2">
             <LeaderboardCard
-              title="You vs Friends"
+              title={t.localLeaderboardTitle}
               rows={allLocalRows}
               loading={false}
-              emptyText={
-                isBs ? "Još nema lokalnih rezultata." : "No local results yet."
-              }
-              positionLabel={formatOrdinal(localPosition || 0, isBs)}
+              emptyText={t.noLocalResults}
+              positionLabel={formatOrdinal(localPosition || 0, isBs, t.you)}
+              loadingText={t.loading}
               showYouRow={!!localYouRow && (localPosition || 0) > 8}
               youRow={localYouRow}
             />
 
             <LeaderboardCard
-              title="Worldwide Score"
+              title={t.globalLeaderboardTitle}
               rows={globalRows}
               loading={globalLoading}
-              emptyText={
-                isBs
-                  ? "Globalni ranking još je prazan."
-                  : "Global leaderboard is still empty."
-              }
-              positionLabel={formatOrdinal(globalPosition || 0, isBs)}
+              emptyText={t.noGlobalResults}
+              positionLabel={formatOrdinal(globalPosition || 0, isBs, t.you)}
+              loadingText={t.loading}
               showYouRow={!!globalYouRow && (globalPosition || 0) > 8}
               youRow={globalYouRow}
             />

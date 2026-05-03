@@ -367,13 +367,22 @@ export default async function handler(
     }
 
     const localePool = filterByLocale(allScenarios, locale);
-    let selectedResult = buildFreshFirstTestSet(localePool, count, excludeIds);
-    let usedLocale = locale;
+    const selectedResult = buildFreshFirstTestSet(localePool, count, excludeIds);
 
-    if (selectedResult.selected.length < count && locale !== "en") {
-      const englishPool = filterByLocale(allScenarios, "en");
-      selectedResult = buildFreshFirstTestSet(englishPool, count, excludeIds);
-      usedLocale = "en";
+    if (selectedResult.selected.length < count) {
+      return res.status(404).json({
+        ok: false,
+        error:
+          locale === "bs"
+            ? "Nema dovoljno bosanskih scenarija za kompletan test. Generiši još BS scenarija prije testa."
+            : "Not enough localized scenarios for a full test. Generate more scenarios first.",
+        meta: {
+          requested: count,
+          availableForLocale: localePool.length,
+          requestedLocale: locale,
+          mode,
+        },
+      });
     }
 
     const selected = shuffle(selectedResult.selected);
@@ -409,7 +418,7 @@ export default async function handler(
         uniqueVehicles,
         uniqueRootCauses,
         requestedLocale: locale,
-        usedLocale,
+        usedLocale: locale,
         mode,
         excludeIdsCount: excludeIds.size,
         freshCount: selectedResult.freshCount,

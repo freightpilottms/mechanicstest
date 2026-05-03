@@ -17,6 +17,13 @@ type AIResponse = {
   vehicle: string;
   year?: number;
   power_kw?: number;
+  engine_code?: string;
+  fuel_type?: string;
+  induction?: string;
+  timing_type?: string;
+  has_start_stop?: boolean;
+  has_dpf?: boolean;
+  emission_standard?: string;
   symptoms: string[];
   driving: string[];
   extra: string[];
@@ -63,6 +70,13 @@ function validateScenario(data: any): data is AIResponse {
     typeof data.vehicle === "string" &&
     (data.year === undefined || typeof data.year === "number") &&
     (data.power_kw === undefined || typeof data.power_kw === "number") &&
+    (data.engine_code === undefined || typeof data.engine_code === "string") &&
+    (data.fuel_type === undefined || typeof data.fuel_type === "string") &&
+    (data.induction === undefined || typeof data.induction === "string") &&
+    (data.timing_type === undefined || typeof data.timing_type === "string") &&
+    (data.has_start_stop === undefined || typeof data.has_start_stop === "boolean") &&
+    (data.has_dpf === undefined || typeof data.has_dpf === "boolean") &&
+    (data.emission_standard === undefined || typeof data.emission_standard === "string") &&
     Array.isArray(data.symptoms) &&
     Array.isArray(data.driving) &&
     Array.isArray(data.extra) &&
@@ -169,11 +183,15 @@ function getLanguageRules(locale: SupportedLocale) {
     return `
 JEZIK I TERMINOLOGIJA:
 - Sav tekst mora biti na prirodnom bosanskom jeziku
-- Ne miješaj engleski i bosanski
+- Ne miješaj engleski i bosanski osim u stvarnim skraćenicama koje majstori koriste: DPF, EGR, ECU, ABS, DTC, MAF, MAP, rail, live data
 - Ne koristi bukvalno prevedene izraze iz engleskog
-- Piši kao da iskusan mehaničar opisuje kvar drugom mehaničaru
+- Piši kao da iskusan mehaničar opisuje kvar drugom mehaničaru ili prima auto od mušterije
+- Koristi svakodnevne radioničke izraze, ne sterilne tehničke prijevode
 - Koristi prirodne izraze kao:
   - ler
+  - auto ne vuče
+  - vergla
+  - cuka
   - preskakanje paljenja
   - motanje volana
   - motanje u krug
@@ -182,17 +200,33 @@ JEZIK I TERMINOLOGIJA:
   - zveckanje
   - curenje rashladne tečnosti
   - gubitak pritiska turbine
+  - gašenje motora
+  - zastajkivanje
+  - vibracije u leru
+  - zanošenje pri kočenju
+  - luft
+  - seleni
+  - kugla
+  - kinetika / homokinetički zglob
+  - ležaj točka
+  - nosač motora
+  - dihtung glave
+  - povratni pritisak u auspuhu
 - Izbjegavaj neprirodne fraze poput:
   - full lock
   - rough idle
   - boost leak
   - misfire
   - low boost
+  - wheel hub assembly
+  - engine support bracket
 - Primjer loše fraze:
   "Zveckanje pri motanju u pun lock"
 - Primjer dobre fraze:
   "Zveckanje pri punom motanju volana"
   "Preskakanje pri motanju u krug"
+  "Auto cuka na laganom gasu"
+  "Hučanje raste s brzinom i mijenja se u krivini"
 `;
   }
 
@@ -324,8 +358,14 @@ STRICT RULES:
 - Only one concrete root cause, exactly the one provided above
 - Brand / vehicle / platform / category / root cause must stay compatible
 - The failure MUST be mechanically possible for the exact engine/platform type
+- The case must read like a real customer came into the shop and gave a complaint, then the mechanic collected a few clues
 - Before generating, internally verify: "Is this fault realistically possible on this exact vehicle spec?"
 - If not, do not improvise and do not force it; instead rewrite the scenario so it becomes realistic for this exact vehicle and exact root cause
+- Use the scenario context only when it naturally fits the root cause; never force an unrelated timeline into the story
+- Never connect unrelated events. Example: refueling must not be the reason a wheel bearing, CV joint, bushing or brake noise appeared
+- If the fault is mechanical, describe noise, vibration, temperature, load, road-test behavior, free play, heat or visual clues instead of inventing ECU behavior
+- If a DTC is useful, put it as one hint or shop note. If no DTC is realistic, explicitly say the scanner has no useful active code
+- A DTC must help like it would in real life; it must not directly reveal the answer in the title
 - Never mention timing chain for a timing-belt engine unless that engine truly uses a chain
 - Never mention timing belt for a timing-chain engine unless that engine truly uses a belt
 - Never use diesel-only causes for petrol vehicles, and never use petrol-only causes for diesel vehicles
@@ -386,6 +426,13 @@ JSON structure:
   "vehicle": "${seed.vehicle}",
   "year": ${meta.year ?? "null"},
   "power_kw": ${meta.power_kw ?? "null"},
+  "engine_code": ${meta.engine_code ? `"${meta.engine_code}"` : "null"},
+  "fuel_type": ${meta.fuel_type ? `"${meta.fuel_type}"` : "null"},
+  "induction": ${meta.induction ? `"${meta.induction}"` : "null"},
+  "timing_type": ${meta.timing_type ? `"${meta.timing_type}"` : "null"},
+  "has_start_stop": ${typeof meta.has_start_stop === "boolean" ? String(meta.has_start_stop) : "null"},
+  "has_dpf": ${typeof meta.has_dpf === "boolean" ? String(meta.has_dpf) : "null"},
+  "emission_standard": ${meta.emission_standard ? `"${meta.emission_standard}"` : "null"},
   "symptoms": ["..."],
   "driving": ["..."],
   "extra": ["..."],
@@ -520,6 +567,40 @@ function sanitizeArrays(data: AIResponse): AIResponse {
   };
 }
 
+function applySeedVehicleMeta(data: AIResponse, seed: ScenarioSeed): AIResponse {
+  const meta = buildVehicleMeta(seed);
+
+  return {
+    ...data,
+    year: meta.year ?? data.year,
+    power_kw: meta.power_kw ?? data.power_kw,
+    engine_code: meta.engine_code ?? data.engine_code,
+    fuel_type: meta.fuel_type ?? data.fuel_type,
+    induction: meta.induction ?? data.induction,
+    timing_type: meta.timing_type ?? data.timing_type,
+    has_start_stop:
+      typeof meta.has_start_stop === "boolean" ? meta.has_start_stop : data.has_start_stop,
+    has_dpf: typeof meta.has_dpf === "boolean" ? meta.has_dpf : data.has_dpf,
+    emission_standard: meta.emission_standard ?? data.emission_standard,
+    scoring_notes: {
+      ...(data.scoring_notes || {}),
+      year: meta.year ?? data.year ?? null,
+      power_kw: meta.power_kw ?? data.power_kw ?? null,
+      engine_code: meta.engine_code ?? data.engine_code ?? null,
+      fuel_type: meta.fuel_type ?? data.fuel_type ?? null,
+      induction: meta.induction ?? data.induction ?? null,
+      timing_type: meta.timing_type ?? data.timing_type ?? null,
+      has_start_stop:
+        typeof meta.has_start_stop === "boolean"
+          ? meta.has_start_stop
+          : data.has_start_stop ?? null,
+      has_dpf:
+        typeof meta.has_dpf === "boolean" ? meta.has_dpf : data.has_dpf ?? null,
+      emission_standard: meta.emission_standard ?? data.emission_standard ?? null,
+    },
+  };
+}
+
 function scenarioMatchesSeed(data: AIResponse, seed: ScenarioSeed) {
   return (
     normalizeText(data.brand) === normalizeText(seed.brand) &&
@@ -554,7 +635,7 @@ async function generateScenario(openai: any, model: string, seed: ScenarioSeed, 
 
     if (!validateScenario(parsed)) continue;
 
-    const clean = sanitizeArrays(parsed);
+    const clean = applySeedVehicleMeta(sanitizeArrays(parsed), seed);
 
     if (!scenarioMatchesSeed(clean, seed)) continue;
     if (titleRevealsAnswer(clean)) continue;

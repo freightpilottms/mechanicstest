@@ -126,11 +126,15 @@ function getLanguageRules(locale: SupportedLocale) {
     return `
 JEZIK I TERMINOLOGIJA:
 - Sav tekst mora biti na prirodnom bosanskom jeziku
-- Ne miješaj engleski i bosanski
+- Ne miješaj engleski i bosanski osim u stvarnim skraćenicama koje majstori koriste: DPF, EGR, ECU, ABS, DTC, MAF, MAP, rail, live data
 - Ne koristi bukvalno prevedene izraze iz engleskog
-- Piši kao da iskusan mehaničar opisuje kvar drugom mehaničaru
+- Piši kao da iskusan mehaničar opisuje kvar drugom mehaničaru ili prima auto od mušterije
+- Koristi svakodnevne radioničke izraze, ne sterilne tehničke prijevode
 - Koristi prirodne izraze kao:
   - ler
+  - auto ne vuče
+  - vergla
+  - cuka
   - preskakanje paljenja
   - motanje volana
   - motanje u krug
@@ -143,17 +147,29 @@ JEZIK I TERMINOLOGIJA:
   - zastajkivanje
   - vibracije u leru
   - zanošenje pri kočenju
+  - luft
+  - seleni
+  - kugla
+  - kinetika / homokinetički zglob
+  - ležaj točka
+  - nosač motora
+  - dihtung glave
+  - povratni pritisak u auspuhu
 - Izbjegavaj neprirodne fraze poput:
   - full lock
   - rough idle
   - boost leak
   - misfire
   - low boost
+  - wheel hub assembly
+  - engine support bracket
 - Primjer loše fraze:
   "Zveckanje pri motanju u pun lock"
 - Primjer dobre fraze:
   "Zveckanje pri punom motanju volana"
   "Preskakanje pri motanju u krug"
+  "Auto cuka na laganom gasu"
+  "Hučanje raste s brzinom i mijenja se u krivini"
 `;
   }
 
@@ -281,8 +297,14 @@ STRICT RULES:
 - Only one concrete root cause, exactly the one provided above
 - Brand / vehicle / platform / category / root cause must stay compatible
 - The failure MUST be mechanically possible for this exact vehicle configuration
+- The case must read like a real customer came into the shop and gave a complaint, then the mechanic collected a few clues
 - Before writing, internally verify that the failure is possible on this exact vehicle
 - If the provided root cause would be unrealistic on this exact vehicle, keep the root cause but describe the case only in a technically believable way for this platform
+- Use the scenario context only when it naturally fits the root cause; never force an unrelated timeline into the story
+- Never connect unrelated events. Example: refueling must not be the reason a wheel bearing, CV joint, bushing or brake noise appeared
+- If the fault is mechanical, describe noise, vibration, temperature, load, road-test behavior, free play, heat or visual clues instead of inventing ECU behavior
+- If a DTC is useful, put it as one hint or shop note. If no DTC is realistic, explicitly say the scanner has no useful active code
+- A DTC must help like it would in real life; it must not directly reveal the answer in the title
 - Never mention start-stop if has_start_stop is false
 - Never mention DPF regeneration, DPF restriction, or DPF-related logic if has_dpf is false
 - Never mention timing chain for a timing-belt engine unless that engine truly uses a chain
@@ -544,6 +566,16 @@ function sanitizeScenario(parsed: ScenarioAIResponse, seed: ScenarioSeed, locale
       languageLocked: locale,
       year: seed.year ?? parsed.year ?? null,
       power_kw: seed.power_kw ?? parsed.power_kw ?? null,
+      engine_code: seed.engine_code ?? parsed.engine_code ?? null,
+      fuel_type: seed.fuel_type ?? parsed.fuel_type ?? null,
+      induction: seed.induction ?? parsed.induction ?? null,
+      timing_type: seed.timing_type ?? parsed.timing_type ?? null,
+      has_start_stop:
+        typeof seed.has_start_stop === "boolean"
+          ? seed.has_start_stop
+          : parsed.has_start_stop ?? null,
+      has_dpf: typeof seed.has_dpf === "boolean" ? seed.has_dpf : parsed.has_dpf ?? null,
+      emission_standard: seed.emission_standard ?? parsed.emission_standard ?? null,
     },
   };
 }
