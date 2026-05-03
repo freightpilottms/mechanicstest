@@ -17,7 +17,7 @@ export default function Document() {
 
         <link rel="manifest" href="/manifest.webmanifest" />
         <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
-        <link rel="icon" href="/icons/favicon.svg" type="image/svg+xml" />
+        <link rel="icon" href="/icons/favicon-48.png" sizes="48x48" type="image/png" />
         <link rel="icon" href="/icons/favicon-32.png" sizes="32x32" type="image/png" />
         <link rel="icon" href="/icons/favicon-16.png" sizes="16x16" type="image/png" />
       </Head>

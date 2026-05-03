@@ -1,4 +1,4 @@
-const CACHE_VERSION = "mechanic-iq-v1";
+const CACHE_VERSION = "mechanic-iq-v2";
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 
@@ -7,9 +7,14 @@ const STATIC_ASSETS = [
   "/single-player",
   "/offline.html",
   "/manifest.webmanifest",
-  "/icons/favicon.svg",
+  "/icons/favicon-16.png",
+  "/icons/favicon-32.png",
+  "/icons/favicon-48.png",
+  "/icons/apple-touch-icon.png",
   "/icons/pwa-192.png",
-  "/icons/pwa-512.png"
+  "/icons/pwa-512.png",
+  "/icons/maskable-192.png",
+  "/icons/maskable-512.png"
 ];
 
 self.addEventListener("install", (event) => {
