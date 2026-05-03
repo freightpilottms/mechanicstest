@@ -1,5 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { getScenariosForMode } from "../../../lib/scenario-storage";
+import { scenarioViolatesBlueprint } from "../../../lib/scenario-blueprints";
+import type { ScenarioSeed } from "../../../lib/scenario-seeds";
 
 type SupportedLocale = "en" | "bs";
 type SupportedMode = "all" | "eu" | "us" | "asia";
@@ -134,6 +136,33 @@ function isMechanicallyCompatible(item: StoredScenario): boolean {
   }
 
   return true;
+}
+
+function isBlueprintCoherent(item: StoredScenario): boolean {
+  if (!item?.root_cause_id || !item?.root_cause_label || !item?.category) {
+    return true;
+  }
+
+  return !scenarioViolatesBlueprint(
+    item as any,
+    {
+      brand: String(item.brand || ""),
+      vehicle: String(item.vehicle || ""),
+      platform_type: String(item.platform_type || ""),
+      category: String(item.category || ""),
+      root_cause_id: String(item.root_cause_id || ""),
+      root_cause_label: String(item.root_cause_label || ""),
+      difficulty: item.difficulty,
+      year: item.year,
+      power_kw: item.power_kw,
+      context: {
+        temperature: "",
+        load: "",
+        behavior: "",
+        timeline: "",
+      },
+    } as ScenarioSeed
+  );
 }
 
 function shuffle<T>(arr: T[]): T[] {
@@ -357,7 +386,9 @@ export default async function handler(
 
     // Pull a much larger pool; limiting to 500 can hide most of the database.
     const allScenariosRaw = await getScenariosForMode(mode, 5000);
-    const allScenarios = uniqueById(allScenariosRaw).filter(isMechanicallyCompatible);
+    const allScenarios = uniqueById(allScenariosRaw)
+      .filter(isMechanicallyCompatible)
+      .filter(isBlueprintCoherent);
 
     if (!allScenarios.length) {
       return res.status(404).json({

@@ -10,6 +10,11 @@ import {
   getRandomScenarioSeed,
   type ScenarioSeed,
 } from "../../lib/scenario-seeds";
+import {
+  buildScenarioBlueprintPrompt,
+  getScenarioBlueprint,
+  scenarioViolatesBlueprint,
+} from "../../lib/scenario-blueprints";
 
 type SupportedLocale = "en" | "bs";
 
@@ -272,6 +277,8 @@ function buildPrompt(seed: ScenarioSeed, locale: SupportedLocale) {
   const varietyRules = getVarietyRules(locale);
   const technicalSpec = describeSeedTechnicalSpec(seed, locale);
 
+  const blueprintRules = buildScenarioBlueprintPrompt(seed, locale);
+
   return `
 ${languageInstruction}
 
@@ -286,11 +293,14 @@ YOU MUST USE THESE FIXED INPUTS:
 
 ${technicalSpec}
 
-SCENARIO CONTEXT (MUST BE USED):
+SUPPORTING CONTEXT:
 - Temperature condition: ${seed.context.temperature}
 - Load condition: ${seed.context.load}
 - Behavior pattern: ${seed.context.behavior}
 - Failure timeline: ${seed.context.timeline}
+- Use this context only if it fits the mandatory workshop blueprint below. The blueprint wins if there is any conflict.
+
+${blueprintRules}
 
 STRICT RULES:
 - Only automotive diagnostics
@@ -302,6 +312,9 @@ STRICT RULES:
 - If the provided root cause would be unrealistic on this exact vehicle, keep the root cause but describe the case only in a technically believable way for this platform
 - Use the scenario context only when it naturally fits the root cause; never force an unrelated timeline into the story
 - Never connect unrelated events. Example: refueling must not be the reason a wheel bearing, CV joint, bushing or brake noise appeared
+- Never combine unrelated symptom worlds. Example: do not write "loss of power and wheel rattling after a pothole" unless the root cause explicitly explains both, which almost never happens
+- A chassis/ovjes/točak case must not contain engine power loss, boost, DPF, rail pressure or injection clues
+- An engine/turbo/fuel/exhaust case must not contain pothole, wheel bearing, steering lock, bushing, ball joint or suspension-noise clues
 - If the fault is mechanical, describe noise, vibration, temperature, load, road-test behavior, free play, heat or visual clues instead of inventing ECU behavior
 - If a DTC is useful, put it as one hint or shop note. If no DTC is realistic, explicitly say the scanner has no useful active code
 - A DTC must help like it would in real life; it must not directly reveal the answer in the title
@@ -401,7 +414,9 @@ QUALITY CHECK BEFORE RETURNING JSON:
 - The title must NOT reveal the diagnosis
 - The language must be consistent and natural
 - The scenario must not feel generic
-- The provided context must clearly influence the complaint and story
+- The blueprint must clearly influence the complaint and story
+- If any symptom does not belong to the same real-world fault path, remove it
+- If a real mechanic would laugh at the scenario, rewrite it before returning JSON
 - The root cause must remain exactly the same as provided
 - accepted_answers must be rich enough for synonym recognition
 - partial_answers must support realistic partial credit
@@ -540,6 +555,8 @@ function scenarioLooksTechnicallyWrong(
 }
 
 function sanitizeScenario(parsed: ScenarioAIResponse, seed: ScenarioSeed, locale: SupportedLocale): ScenarioAIResponse {
+  const blueprint = getScenarioBlueprint(seed);
+
   return {
     ...parsed,
     brand: seed.brand,
@@ -576,6 +593,7 @@ function sanitizeScenario(parsed: ScenarioAIResponse, seed: ScenarioSeed, locale
           : parsed.has_start_stop ?? null,
       has_dpf: typeof seed.has_dpf === "boolean" ? seed.has_dpf : parsed.has_dpf ?? null,
       emission_standard: seed.emission_standard ?? parsed.emission_standard ?? null,
+      blueprintFamily: blueprint.family,
     },
   };
 }
@@ -592,6 +610,7 @@ async function generateValidScenario(
   for (let attempt = 1; attempt <= 3; attempt++) {
     const response = await openai.responses.create({
       model,
+      reasoning: { effort: attempt === 1 ? "high" : "xhigh" },
       input: buildPrompt(seed, locale),
     });
 
@@ -622,6 +641,12 @@ async function generateValidScenario(
       continue;
     }
 
+    const blueprintIssue = scenarioViolatesBlueprint(parsed, seed);
+    if (blueprintIssue) {
+      lastReason = `Attempt ${attempt}: ${blueprintIssue}`;
+      continue;
+    }
+
     return {
       parsed: sanitizeScenario(parsed, seed, locale),
       raw: text,
@@ -637,7 +662,7 @@ export default async function handler(
 ) {
   try {
     const openai = getOpenAI();
-    const model = process.env.OPENAI_SCENARIO_MODEL || "gpt-5.4";
+    const model = process.env.OPENAI_SCENARIO_MODEL || "gpt-5.5";
     const count = Math.min(50, Math.max(1, Number(req.query.count || 1)));
     const locale = getLocaleFromReq(req);
 

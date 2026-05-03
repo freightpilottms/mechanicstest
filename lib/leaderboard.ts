@@ -11,6 +11,21 @@ export type LeaderboardEntry = {
     question_count: number;
     answered_count: number;
     timed_out_count: number;
+    global_position?: number;
+    tests_played?: number;
+  };
+
+  export type LeaderboardPlayerStats = {
+    player_key: string;
+    player_name: string;
+    global_position: number | null;
+    total_players: number;
+    best_score: number;
+    best_total_points: number;
+    tests_played: number;
+    rank_label: string;
+    last_played_at: string | null;
+    best_entry: LeaderboardEntry | null;
   };
   
   const LOCAL_LEADERBOARD_KEY = "mechanic_iq_local_leaderboard_v1";

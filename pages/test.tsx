@@ -13,7 +13,7 @@ import {
   type AnswerState,
   type ScenarioQuestion,
 } from "@/lib/test-session";
-import type { LeaderboardEntry } from "@/lib/leaderboard";
+import type { LeaderboardEntry, LeaderboardPlayerStats } from "@/lib/leaderboard";
 import {
   getLocalPlayerName,
   getOrCreateLocalPlayerKey,
@@ -308,6 +308,8 @@ export default function TestPage() {
     title: string;
     content: string | string[];
   } | null>(null);
+  const [globalPlayerStats, setGlobalPlayerStats] =
+    useState<LeaderboardPlayerStats | null>(null);
 
   const sessionIdRef = useRef(buildTestSessionId(testMode, locale));
   const leaderboardSubmittedRef = useRef(false);
@@ -723,7 +725,14 @@ export default function TestPage() {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(entry),
-    }).catch(() => {});
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.ok && data.currentPlayer) {
+          setGlobalPlayerStats(data.currentPlayer);
+        }
+      })
+      .catch(() => {});
   }, [
     answeredCount,
     averageScore,
@@ -839,7 +848,7 @@ export default function TestPage() {
                   {t.tagline}
                 </p>
 
-                <div className="mt-8 grid gap-4 sm:grid-cols-3">
+                <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                   <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
                     <p className="text-xs uppercase tracking-[0.2em] text-zinc-400">
                       {t.average}
@@ -858,6 +867,21 @@ export default function TestPage() {
                     </p>
                     <p className="mt-2 text-3xl font-black text-white">
                       {answeredCount}/{results.length}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
+                    <p className="text-xs uppercase tracking-[0.2em] text-emerald-300">
+                      {t.globalPosition}
+                    </p>
+                    <p className="mt-2 text-3xl font-black text-white">
+                      {globalPlayerStats?.global_position
+                        ? `${globalPlayerStats.global_position}.`
+                        : "—"}
+                    </p>
+                    <p className="mt-1 text-xs font-semibold text-emerald-200/80">
+                      {globalPlayerStats?.total_players
+                        ? `${t.totalPlayers}: ${globalPlayerStats.total_players}`
+                        : t.notRankedYet}
                     </p>
                   </div>
                 </div>

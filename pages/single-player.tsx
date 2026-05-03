@@ -5,7 +5,11 @@ import { getMessages } from "@/lib/i18n";
 import { useEffect, useMemo, useState } from "react";
 import {
   getLocalLeaderboard,
+  getLocalPlayerName,
+  getOrCreateLocalPlayerKey,
+  setLocalPlayerName,
   type LeaderboardEntry,
+  type LeaderboardPlayerStats,
 } from "@/lib/leaderboard";
 
 const modes = [
@@ -75,6 +79,8 @@ function LeaderboardCard({
   emptyText,
   positionLabel,
   loadingText,
+  stats,
+  statsLabels,
   showYouRow = false,
   youRow,
 }: {
@@ -84,6 +90,16 @@ function LeaderboardCard({
   emptyText: string;
   positionLabel: string;
   loadingText: string;
+  stats?: LeaderboardPlayerStats | null;
+  statsLabels?: {
+    title: string;
+    position: string;
+    players: string;
+    best: string;
+    points: string;
+    tests: string;
+    notRanked: string;
+  };
   showYouRow?: boolean;
   youRow?: LeaderboardEntry | null;
 }) {
@@ -98,6 +114,45 @@ function LeaderboardCard({
           {positionLabel}
         </div>
       </div>
+
+      {statsLabels ? (
+        <div className="mt-5 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
+          <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-emerald-300">
+            {statsLabels.title}
+          </p>
+          <div className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+            <div>
+              <p className="text-zinc-400">{statsLabels.position}</p>
+              <p className="mt-1 text-xl font-black text-white">
+                {stats?.global_position ? `${stats.global_position}.` : "—"}
+              </p>
+            </div>
+            <div>
+              <p className="text-zinc-400">{statsLabels.best}</p>
+              <p className="mt-1 text-xl font-black text-white">
+                {stats?.best_score ? stats.best_score.toFixed(1) : "—"}
+              </p>
+            </div>
+            <div>
+              <p className="text-zinc-400">{statsLabels.points}</p>
+              <p className="mt-1 text-xl font-black text-white">
+                {stats?.best_total_points ? stats.best_total_points.toFixed(1) : "—"}
+              </p>
+            </div>
+            <div>
+              <p className="text-zinc-400">{statsLabels.tests}</p>
+              <p className="mt-1 text-xl font-black text-white">
+                {stats?.tests_played || 0}
+              </p>
+            </div>
+          </div>
+          <p className="mt-3 text-xs font-semibold text-emerald-200/80">
+            {stats?.total_players
+              ? `${statsLabels.players}: ${stats.total_players}`
+              : statsLabels.notRanked}
+          </p>
+        </div>
+      ) : null}
 
       {loading ? (
         <div className="mt-5 rounded-2xl border border-white/8 bg-black/20 px-4 py-6 text-sm text-zinc-400">
@@ -131,6 +186,9 @@ function LeaderboardCard({
 
                   <div className="text-right text-[15px] font-black text-orange-400">
                     {row.avg_score.toFixed(1)}
+                    <div className="mt-1 text-[11px] font-semibold text-zinc-500">
+                      {row.total_points.toFixed(1)}
+                    </div>
                   </div>
                 </div>
               ))}
@@ -172,11 +230,16 @@ export default function SinglePlayerPage() {
   const [selectedKey, setSelectedKey] = useState<ModeOption["key"]>(modes[0].key);
   const [allLocalRows, setAllLocalRows] = useState<LeaderboardEntry[]>([]);
   const [globalRows, setGlobalRows] = useState<LeaderboardEntry[]>([]);
+  const [globalPlayerStats, setGlobalPlayerStats] =
+    useState<LeaderboardPlayerStats | null>(null);
   const [globalLoading, setGlobalLoading] = useState(true);
+  const [playerName, setPlayerName] = useState("");
+  const [nameSaved, setNameSaved] = useState(false);
 
   useEffect(() => {
     const localAll = getLocalLeaderboard();
     setAllLocalRows(localAll);
+    setPlayerName(getLocalPlayerName());
   }, []);
 
   useEffect(() => {
@@ -185,11 +248,14 @@ export default function SinglePlayerPage() {
     async function loadGlobal() {
       try {
         setGlobalLoading(true);
-        const res = await fetch("/api/leaderboard");
+        const playerKey = getOrCreateLocalPlayerKey();
+        const params = new URLSearchParams({ playerKey });
+        const res = await fetch(`/api/leaderboard?${params.toString()}`);
         const data = await res.json();
 
         if (!cancelled && res.ok && data?.ok && Array.isArray(data.rows)) {
           setGlobalRows(data.rows);
+          setGlobalPlayerStats(data.currentPlayer || null);
         }
       } catch {
         if (!cancelled) setGlobalRows([]);
@@ -210,12 +276,12 @@ export default function SinglePlayerPage() {
     [allLocalRows]
   );
   const globalPosition = useMemo(
-    () => getBestPlayerPosition(globalRows),
-    [globalRows]
+    () => globalPlayerStats?.global_position || getBestPlayerPosition(globalRows),
+    [globalPlayerStats, globalRows]
   );
 
   const localYouRow = useMemo(() => getYouRow(allLocalRows), [allLocalRows]);
-  const globalYouRow = useMemo(() => getYouRow(globalRows), [globalRows]);
+  const globalYouRow = globalPlayerStats?.best_entry || null;
   const selected = useMemo(
     () => modes.find((mode) => mode.key === selectedKey) || modes[0],
     [selectedKey]
@@ -240,6 +306,13 @@ export default function SinglePlayerPage() {
       localStorage.setItem("mechanic_test_last_entry", "single-player");
     }
     router.push(`/test?mode=${selected.key}`);
+  }
+
+  function savePlayerName() {
+    setLocalPlayerName(playerName);
+    setPlayerName(getLocalPlayerName());
+    setNameSaved(true);
+    window.setTimeout(() => setNameSaved(false), 1600);
   }
 
   return (
@@ -300,6 +373,27 @@ export default function SinglePlayerPage() {
               <h2 className="text-3xl font-black">
                 {t.chooseMode}
               </h2>
+
+              <div className="mt-5 grid gap-3 rounded-2xl border border-white/10 bg-black/20 p-4 sm:grid-cols-[1fr_auto]">
+                <label className="min-w-0">
+                  <span className="text-xs font-bold uppercase tracking-[0.2em] text-zinc-400">
+                    {t.playerName}
+                  </span>
+                  <input
+                    value={playerName}
+                    onChange={(event) => setPlayerName(event.target.value)}
+                    className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm font-semibold text-white outline-none transition focus:border-orange-500/40"
+                    maxLength={32}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={savePlayerName}
+                  className="self-end rounded-xl bg-orange-500 px-5 py-3 text-sm font-bold text-black transition hover:bg-orange-400"
+                >
+                  {nameSaved ? t.nameSaved : t.saveName}
+                </button>
+              </div>
 
               <div className="mt-6 grid gap-4">
                 {modes.map((m) => {
@@ -398,6 +492,16 @@ export default function SinglePlayerPage() {
               loadingText={t.loading}
               showYouRow={!!globalYouRow && (globalPosition || 0) > 8}
               youRow={globalYouRow}
+              stats={globalPlayerStats}
+              statsLabels={{
+                title: t.leaderboardStats,
+                position: t.globalPosition,
+                players: t.totalPlayers,
+                best: t.bestScore,
+                points: t.totalPoints,
+                tests: t.testsPlayed,
+                notRanked: t.notRankedYet,
+              }}
             />
           </section>
 

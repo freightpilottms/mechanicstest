@@ -367,10 +367,11 @@ export default async function handler(
     const locale = localeFromBody(req.body?.locale || req.body?.lang) || inferLocale(question as ScenarioQuestion, userAnswer);
 
     const openai = getOpenAI();
-    const model = process.env.OPENAI_SCORING_MODEL || "gpt-5-mini";
+    const model = process.env.OPENAI_SCORING_MODEL || "gpt-5.4-mini";
 
     const response = await openai.responses.create({
       model,
+      reasoning: { effort: "medium" },
       input: buildPrompt(question as ScenarioQuestion, userAnswer, locale),
     });
 
