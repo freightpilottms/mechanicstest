@@ -9,6 +9,10 @@ import {
   scenarioViolatesBlueprint,
 } from "../../lib/scenario-blueprints";
 
+export const config = {
+  maxDuration: 300,
+};
+
 type SupportedLocale = "en" | "bs";
 
 type AIResponse = {
@@ -693,6 +697,12 @@ export default async function handler(
         message: "Scenario already exists",
         existing,
         signature,
+        scenario: {
+          title: parsed.title,
+          vehicle: parsed.vehicle,
+          difficulty: parsed.difficulty,
+          root_cause_id: parsed.root_cause_id,
+        },
         seed,
       });
     }
@@ -708,6 +718,12 @@ export default async function handler(
       ok: true,
       inserted,
       signature,
+      scenario: {
+        title: parsed.title,
+        vehicle: parsed.vehicle,
+        difficulty: parsed.difficulty,
+        root_cause_id: parsed.root_cause_id,
+      },
       seed,
       model,
     });

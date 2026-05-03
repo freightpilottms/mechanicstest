@@ -43,11 +43,85 @@ export type StoredScenario = {
   emission_standard?: string;
 };
 
+const SCHEMA_FALLBACK_COLUMNS = [
+  "signature",
+  "locale",
+  "language",
+  "times_used",
+  "created_at",
+  "year",
+  "power_kw",
+  "engine_code",
+  "fuel_type",
+  "induction",
+  "timing_type",
+  "has_start_stop",
+  "has_dpf",
+  "emission_standard",
+] as const;
+
 function normalizeText(value: unknown) {
   return String(value || "")
     .toLowerCase()
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function getScenarioLocale(item: StoredScenario) {
+  const notes = item.scoring_notes || {};
+  const raw = String(
+    item.locale ||
+      item.language ||
+      item.lang ||
+      notes.languageLocked ||
+      notes.locale ||
+      notes.language ||
+      "en"
+  ).toLowerCase();
+
+  return raw === "bs" ? "bs" : "en";
+}
+
+function errorText(error: any) {
+  return [error?.message, error?.details, error?.hint, error?.code]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function getMissingColumn(error: any) {
+  const text = errorText(error);
+
+  const direct =
+    text.match(/Could not find the '([^']+)' column/i)?.[1] ||
+    text.match(/column "?(?:\w+\.)?([a-zA-Z0-9_]+)"? does not exist/i)?.[1] ||
+    text.match(/column "([^"]+)" of relation/i)?.[1];
+
+  if (direct) return direct;
+
+  const normalized = text.toLowerCase();
+  if (!/schema cache|does not exist|column|pgrst204/.test(normalized)) {
+    return null;
+  }
+
+  return (
+    SCHEMA_FALLBACK_COLUMNS.find((column) =>
+      normalized.includes(column.toLowerCase())
+    ) || null
+  );
+}
+
+function isMissingColumn(error: any, column?: string) {
+  const missingColumn = getMissingColumn(error);
+  if (!missingColumn) return false;
+  return column ? missingColumn === column : true;
+}
+
+function formatSupabaseError(action: string, error: any) {
+  const parts = [error?.message || "Unknown Supabase error"];
+  if (error?.code) parts.push(`code: ${error.code}`);
+  if (error?.details) parts.push(`details: ${error.details}`);
+  if (error?.hint) parts.push(`hint: ${error.hint}`);
+  return `${action}: ${parts.join(" | ")}`;
 }
 
 function matchesMode(item: StoredScenario, mode: SupportedMode) {
@@ -122,10 +196,8 @@ function matchesMode(item: StoredScenario, mode: SupportedMode) {
   return true;
 }
 
-export async function insertScenario(scenario: StoredScenario) {
-  const supabase = getSupabaseAdmin();
-
-  const payload = {
+function buildScenarioPayload(scenario: StoredScenario) {
+  return {
     brand: scenario.brand,
     platform_type: scenario.platform_type,
     category: scenario.category,
@@ -159,18 +231,46 @@ export async function insertScenario(scenario: StoredScenario) {
     has_dpf: scenario.has_dpf ?? null,
     emission_standard: scenario.emission_standard ?? null,
   };
+}
 
-  const { data, error } = await supabase
-    .from("scenarios")
-    .insert(payload)
-    .select("id")
-    .single();
+export async function insertScenario(scenario: StoredScenario) {
+  const supabase = getSupabaseAdmin();
+  const payload = buildScenarioPayload(scenario);
+  const omittedColumns: string[] = [];
+  let currentPayload: Record<string, any> = { ...payload };
 
-  if (error) {
-    throw new Error(error.message);
+  for (let attempt = 0; attempt <= SCHEMA_FALLBACK_COLUMNS.length; attempt += 1) {
+    const { data, error } = await supabase
+      .from("scenarios")
+      .insert(currentPayload)
+      .select("id")
+      .single();
+
+    if (!error) {
+      return omittedColumns.length
+        ? { ...data, omitted_columns: omittedColumns }
+        : data;
+    }
+
+    const missingColumn = getMissingColumn(error);
+    const canRetry =
+      missingColumn &&
+      SCHEMA_FALLBACK_COLUMNS.includes(missingColumn as any) &&
+      Object.prototype.hasOwnProperty.call(currentPayload, missingColumn);
+
+    if (canRetry) {
+      const { [missingColumn]: _removed, ...rest } = currentPayload;
+      currentPayload = rest;
+      omittedColumns.push(missingColumn);
+      continue;
+    }
+
+    throw new Error(formatSupabaseError("Could not insert scenario", error));
   }
 
-  return data;
+  throw new Error(
+    `Could not insert scenario: database schema rejected columns ${omittedColumns.join(", ")}`
+  );
 }
 
 export async function findScenarioBySignature(signature: string) {
@@ -183,7 +283,11 @@ export async function findScenarioBySignature(signature: string) {
     .maybeSingle();
 
   if (error) {
-    throw new Error(error.message);
+    if (isMissingColumn(error, "signature")) {
+      return null;
+    }
+
+    throw new Error(formatSupabaseError("Could not check scenario signature", error));
   }
 
   return data;
@@ -199,7 +303,7 @@ export async function getScenarioById(id: string) {
     .maybeSingle();
 
   if (error) {
-    throw new Error(error.message);
+    throw new Error(formatSupabaseError("Could not get scenario by id", error));
   }
 
   return data;
@@ -216,10 +320,63 @@ export async function getLatestScenario() {
     .maybeSingle();
 
   if (error) {
-    throw new Error(error.message);
+    throw new Error(formatSupabaseError("Could not get latest scenario", error));
   }
 
   return data;
+}
+
+async function fetchScenarioRows(limit: number, locale?: string) {
+  const supabase = getSupabaseAdmin();
+  let withTimesUsedOrder = true;
+  let withCreatedAtOrder = true;
+  let withLocaleFilter = Boolean(locale);
+
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    let query = supabase.from("scenarios").select("*");
+
+    if (withTimesUsedOrder) {
+      query = query.order("times_used", { ascending: true });
+    }
+
+    if (withCreatedAtOrder) {
+      query = query.order("created_at", { ascending: false });
+    }
+
+    query = query.limit(limit);
+
+    if (withLocaleFilter && locale) {
+      query = query.eq("locale", locale);
+    }
+
+    const { data, error } = await query;
+
+    if (!error) {
+      return {
+        rows: (data ?? []) as StoredScenario[],
+        serverFilteredLocale: withLocaleFilter,
+      };
+    }
+
+    if (withTimesUsedOrder && isMissingColumn(error, "times_used")) {
+      withTimesUsedOrder = false;
+      continue;
+    }
+
+    if (withCreatedAtOrder && isMissingColumn(error, "created_at")) {
+      withCreatedAtOrder = false;
+      continue;
+    }
+
+    if (withLocaleFilter && isMissingColumn(error, "locale")) {
+      withLocaleFilter = false;
+      continue;
+    }
+
+    throw new Error(formatSupabaseError("Could not fetch scenarios", error));
+  }
+
+  throw new Error("Could not fetch scenarios: database schema fallback exhausted");
 }
 
 export async function getScenariosForMode(
@@ -227,27 +384,15 @@ export async function getScenariosForMode(
   limit = 10,
   locale?: string
 ) {
-  const supabase = getSupabaseAdmin();
+  const { rows, serverFilteredLocale } = await fetchScenarioRows(limit, locale);
+  const modeRows = rows.filter((item) => matchesMode(item, mode));
 
-  let query = supabase
-    .from("scenarios")
-    .select("*")
-    .order("times_used", { ascending: true })
-    .order("created_at", { ascending: false })
-    .limit(limit);
-
-  if (locale) {
-    query = query.eq("locale", locale);
+  if (locale && !serverFilteredLocale) {
+    const normalizedLocale = locale === "bs" ? "bs" : "en";
+    return modeRows.filter((item) => getScenarioLocale(item) === normalizedLocale);
   }
 
-  const { data, error } = await query;
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  const rows = (data ?? []) as StoredScenario[];
-  return rows.filter((item) => matchesMode(item, mode));
+  return modeRows;
 }
 
 export async function incrementScenarioTimesUsed(id: string) {
@@ -266,7 +411,11 @@ export async function incrementScenarioTimesUsed(id: string) {
     .eq("id", id);
 
   if (error) {
-    throw new Error(error.message);
+    if (isMissingColumn(error, "times_used")) {
+      return { id, times_used: Number(current.times_used || 0) };
+    }
+
+    throw new Error(formatSupabaseError("Could not update scenario usage", error));
   }
 
   return { id, times_used: nextTimesUsed };

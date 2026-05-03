@@ -16,6 +16,10 @@ import {
   scenarioViolatesBlueprint,
 } from "../../lib/scenario-blueprints";
 
+export const config = {
+  maxDuration: 300,
+};
+
 type SupportedLocale = "en" | "bs";
 
 type ScenarioAIResponse = {
@@ -661,6 +665,7 @@ export default async function handler(
   res: NextApiResponse
 ) {
   try {
+    const startedAt = Date.now();
     const openai = getOpenAI();
     const model = process.env.OPENAI_SCENARIO_MODEL || "gpt-5.5";
     const count = Math.min(50, Math.max(1, Number(req.query.count || 1)));
@@ -715,13 +720,18 @@ export default async function handler(
       }
     }
 
-    return res.status(200).json({
-      ok: true,
+    const persistedCount = created.length + existing.length;
+    const status = persistedCount > 0 || failed.length === 0 ? 200 : 500;
+
+    return res.status(status).json({
+      ok: status < 400,
       requested: count,
       locale,
       createdCount: created.length,
       existingCount: existing.length,
       failedCount: failed.length,
+      persistedCount,
+      elapsedMs: Date.now() - startedAt,
       created,
       existing,
       failed,

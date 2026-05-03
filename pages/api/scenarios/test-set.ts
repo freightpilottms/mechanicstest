@@ -183,7 +183,17 @@ function uniqueById(items: StoredScenario[]): StoredScenario[] {
 }
 
 function normalizeScenarioLocale(item: StoredScenario): SupportedLocale {
-  const raw = String(item.locale || item.language || "en").toLowerCase();
+  const notes = item.scoring_notes || {};
+  const raw = String(
+    item.locale ||
+      item.language ||
+      item.lang ||
+      notes.languageLocked ||
+      notes.locale ||
+      notes.language ||
+      "en"
+  ).toLowerCase();
+
   return raw === "bs" ? "bs" : "en";
 }
 
