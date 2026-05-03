@@ -2,6 +2,7 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import { useLocale } from "@/lib/locale-context";
 import { getMessages } from "@/lib/i18n";
+import PwaInstallButton from "@/components/PwaInstallButton";
 import { useEffect, useMemo, useState } from "react";
 import {
   getLocalLeaderboard,
@@ -343,27 +344,30 @@ export default function SinglePlayerPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/20 p-1">
-            <button
-              onClick={() => setLocale("en")}
-              className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${
-                locale === "en"
-                  ? "bg-orange-500 text-black"
-                  : "text-zinc-300 hover:bg-white/10"
-              }`}
-            >
-              EN
-            </button>
-            <button
-              onClick={() => setLocale("bs")}
-              className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${
-                locale === "bs"
-                  ? "bg-orange-500 text-black"
-                  : "text-zinc-300 hover:bg-white/10"
-              }`}
-            >
-              BS
-            </button>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <PwaInstallButton />
+            <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/20 p-1">
+              <button
+                onClick={() => setLocale("en")}
+                className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${
+                  locale === "en"
+                    ? "bg-orange-500 text-black"
+                    : "text-zinc-300 hover:bg-white/10"
+                }`}
+              >
+                EN
+              </button>
+              <button
+                onClick={() => setLocale("bs")}
+                className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${
+                  locale === "bs"
+                    ? "bg-orange-500 text-black"
+                    : "text-zinc-300 hover:bg-white/10"
+                }`}
+              >
+                BS
+              </button>
+            </div>
           </div>
         </header>
 
